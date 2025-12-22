@@ -23,7 +23,8 @@ interface LivePreviewProps {
     data: SermonData;
 }
 
-export function LivePreview({ data }: LivePreviewProps) {
+// CHANGE: Use 'export default' here
+export default function LivePreview({ data }: LivePreviewProps) {
     return (
         <div className="h-full w-full bg-[#1c1c1c] border-l border-border/40 shadow-inner p-0 overflow-hidden">
             <PDFViewer width="100%" height="100%" className="border-none w-full h-full">
