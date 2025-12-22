@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ShellLayout } from "@/components/layout/shell-layout";
 import { SermonBuilder, type SermonData } from "@/components/studio/sermon-builder";
-import { LivePreview } from "@/components/studio/live-preview";
+import { LivePreview } from "@/components/studio/pdf-preview";
 
 export default function StudioPage() {
     const [sermonData, setSermonData] = useState<SermonData>({
