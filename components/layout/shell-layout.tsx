@@ -25,6 +25,13 @@ import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { RightPanel } from "@/components/layout/right-panel";
 import { useRhema } from "@/lib/store/rhema-context";
 import { useAuth } from "@/lib/store/auth-context";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Settings, LogOut } from "lucide-react";
 
 interface ShellLayoutProps {
     children: React.ReactNode;
@@ -101,22 +108,31 @@ export function ShellLayout({ children }: ShellLayoutProps) {
                 </ScrollArea>
 
                 <div className="p-4 border-t border-border">
-                    <div className={cn("flex items-center gap-3", isSidebarCollapsed && "justify-center")}>
-                        <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-xs ring-1 ring-primary/40">
-                            {user.name.charAt(0)}
-                        </div>
-                        {!isSidebarCollapsed && (
-                            <div className="flex flex-col overflow-hidden">
-                                <span className="text-sm font-medium truncate">{user.name}</span>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs text-muted-foreground truncate">{user.role} Plan</span>
-                                    <button onClick={() => signOut()} className="text-[10px] text-red-400 hover:underline">
-                                        Sign Out
-                                    </button>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <div className={cn("flex items-center gap-3 cursor-pointer hover:bg-muted/50 p-2 rounded-md transition-colors", isSidebarCollapsed && "justify-center")}>
+                                <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-xs ring-1 ring-primary/40 text-transform uppercase">
+                                    {user.name.charAt(0)}
                                 </div>
+                                {!isSidebarCollapsed && (
+                                    <div className="flex flex-col overflow-hidden text-left">
+                                        <span className="text-sm font-medium truncate">{user.name}</span>
+                                        <span className="text-xs text-muted-foreground truncate">{user.role} Plan</span>
+                                    </div>
+                                )}
                             </div>
-                        )}
-                    </div>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="w-[200px] ml-2">
+                            <DropdownMenuItem onClick={() => window.location.href = '/settings'}>
+                                <Settings className="mr-2 h-4 w-4" />
+                                <span>Sanctuary Settings</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => signOut()} className="text-red-500 focus:text-red-500 focus:bg-red-500/10">
+                                <LogOut className="mr-2 h-4 w-4" />
+                                <span>Sign Out</span>
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </div>
             </aside>
 

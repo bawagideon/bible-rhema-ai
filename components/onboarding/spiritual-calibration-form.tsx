@@ -62,30 +62,37 @@ export function SpiritualCalibrationForm() {
 
         const { data: { user } } = await supabase.auth.getUser();
 
-        if (!user) {
-            toast.error("You must be logged in.");
+        try {
+            if (!supabase) {
+                throw new Error("Supabase client not initialized.");
+            }
+
+            const { data: { user } } = await supabase.auth.getUser();
+
+            if (!user) {
+                throw new Error("You must be logged in.");
+            }
+
+            const { error } = await supabase
+                .from('profiles')
+                .update({
+                    spiritual_goals: goals,
+                    struggles: struggles,
+                    favorite_ministers: ministers,
+                    preferred_bible_version: bible,
+                    has_completed_onboarding: true
+                })
+                .eq('id', user.id);
+
+            if (error) throw error;
+
+            toast.success("Profile Calibrated!");
+            window.location.href = '/';
+        } catch (error: any) {
+            console.error("Error saving profile:", error);
+            toast.error("Failed to save profile. " + (error.message || "Please try again."));
+        } finally {
             setIsLoading(false);
-            return;
-        }
-
-        const ministerList = ministers.split(',').map(m => m.trim()).filter(Boolean);
-
-        const { error } = await supabase
-            .from('profiles')
-            .update({
-                spiritual_goals: goals,
-                struggles: struggles,
-                favorite_ministers: ministerList,
-                preferred_bible_version: bible
-            })
-            .eq('id', user.id);
-
-        if (error) {
-            toast.error("Failed to save profile. " + error.message);
-            setIsLoading(false);
-        } else {
-            toast.success("Spiritual Profile Calibrated.");
-            router.push('/studio'); // Redirect to Studio
         }
     };
 
