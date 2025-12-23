@@ -1,15 +1,35 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useRhema } from "@/lib/store/rhema-context";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { BookOpen, Settings, Download, Search, Info } from "lucide-react";
+import { BookOpen, Settings, Download, Search, Info, Trash2, Library } from "lucide-react";
+import { fetchSermons, SavedSermon } from "@/lib/api";
 
 export function RightPanel() {
     const pathname = usePathname();
-    const { isRightPanelOpen } = useRhema();
+    const { isRightPanelOpen, setSermonToLoad, triggerPdfExport } = useRhema();
+    const [sermons, setSermons] = useState<SavedSermon[]>([]);
+    const [loadingSermons, setLoadingSermons] = useState(false);
+
+    useEffect(() => {
+        // Fetch sermons when the panel is open and we are in the studio
+        if (isRightPanelOpen && pathname === "/studio") {
+            loadSermons();
+        }
+    }, [isRightPanelOpen, pathname]);
+
+    const loadSermons = async () => {
+        setLoadingSermons(true);
+        const res = await fetchSermons();
+        if (res.success && res.data) {
+            setSermons(res.data);
+        }
+        setLoadingSermons(false);
+    };
 
     // "The Chameleon" Logic
     const renderContent = () => {
@@ -56,6 +76,37 @@ export function RightPanel() {
             case "/studio":
                 return (
                     <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500 delay-100">
+                        {/* New Section: My Sermon Library */}
+                        <div className="space-y-4">
+                            <h3 className="text-xs uppercase tracking-widest text-primary font-bold flex items-center gap-2">
+                                <Library className="h-3 w-3" /> My Library
+                            </h3>
+
+                            <div className="space-y-2">
+                                {loadingSermons ? (
+                                    <p className="text-xs text-muted-foreground">Loading library...</p>
+                                ) : sermons.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground">No saved sermons yet.</p>
+                                ) : (
+                                    sermons.map((sermon) => (
+                                        <div
+                                            key={sermon.id}
+                                            onClick={() => setSermonToLoad(sermon.content_json)}
+                                            className="group p-3 rounded bg-card/20 hover:bg-card/60 cursor-pointer border border-transparent hover:border-[#D4AF37]/30 transition-all active:scale-95"
+                                        >
+                                            <div className="flex justify-between items-start">
+                                                <span className="font-serif font-medium text-sm text-foreground/90 group-hover:text-[#D4AF37] transition-colors">{sermon.title}</span>
+                                                <span className="text-[10px] text-muted-foreground">{new Date(sermon.created_at).toLocaleDateString()}</span>
+                                            </div>
+                                            <p className="text-[10px] text-muted-foreground mt-1 line-clamp-1 italic">
+                                                {sermon.content_json.scripture || "No scripture"}
+                                            </p>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
                         <div className="space-y-4">
                             <h3 className="text-xs uppercase tracking-widest text-primary font-bold flex items-center gap-2">
                                 <Settings className="h-3 w-3" /> Format Options
@@ -74,7 +125,10 @@ export function RightPanel() {
                         </div>
 
                         <div className="pt-8 border-t border-border/20">
-                            <Button className="w-full bg-[#D4AF37] hover:bg-[#b5952f] text-black font-semibold h-12 shadow-lg gap-2">
+                            <Button
+                                onClick={triggerPdfExport}
+                                className="w-full bg-[#D4AF37] hover:bg-[#b5952f] text-black font-semibold h-12 shadow-lg gap-2"
+                            >
                                 <Download className="h-4 w-4" />
                                 Export as PDF
                             </Button>

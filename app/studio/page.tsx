@@ -1,20 +1,37 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ShellLayout } from "@/components/layout/shell-layout";
 import { SermonBuilder, type SermonData } from "@/components/studio/sermon-builder";
 import { LivePreview } from "@/components/studio/pdf-preview";
+import { saveSermon } from "@/lib/api";
+import { Toaster, toast } from "sonner";
+import { useRhema } from "@/lib/store/rhema-context";
 
 // No more dynamic import needed for the container itself
 // The html2pdf library is dynamically imported inside the component on click.
 
 export default function StudioPage() {
+    const { sermonToLoad, setSermonToLoad } = useRhema();
+    const [isSaving, setIsSaving] = useState(false);
     const [sermonData, setSermonData] = useState<SermonData>({
         title: "",
         scripture: "",
         tone: "Theological",
         notes: "",
     });
+
+    // Effect to handle loading from context (Right Panel Library)
+    useEffect(() => {
+        if (sermonToLoad) {
+            setSermonData(sermonToLoad);
+            toast.success(`Loaded "${sermonToLoad.title || 'Sermon'}"`);
+            // Clear the context so we don't re-load on every render/mount inappropriately
+            // setSermonToLoad(null); 
+            // Actually, keep it for now or clear it? Better to clear it to avoid loops if we change routes back and forth
+            setSermonToLoad(null);
+        }
+    }, [sermonToLoad, setSermonToLoad]);
 
     const handleGenerate = () => {
         // Mock AI Generation
@@ -40,6 +57,18 @@ Conclusion:
         setSermonData((prev: SermonData) => ({ ...prev, notes: aiContent }));
     };
 
+    const handleSave = async () => {
+        setIsSaving(true);
+        const result = await saveSermon(sermonData);
+        setIsSaving(false);
+
+        if (result.success) {
+            toast.success("Sermon saved to library!");
+        } else {
+            toast.error("Failed to save sermon.");
+        }
+    };
+
     return (
         <ShellLayout>
             <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden">
@@ -49,6 +78,8 @@ Conclusion:
                         data={sermonData}
                         onChange={setSermonData}
                         onGenerate={handleGenerate}
+                        onSave={handleSave}
+                        isSaving={isSaving}
                     />
                 </div>
 
@@ -57,6 +88,7 @@ Conclusion:
                     <LivePreview data={sermonData} />
                 </div>
             </div>
+            <Toaster position="bottom-right" theme="dark" />
         </ShellLayout>
     );
 }

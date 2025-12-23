@@ -1,9 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Download, Loader2, Printer } from "lucide-react";
 import type { SermonData } from "./sermon-builder";
+import ReactMarkdown from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
+import { useRhema } from "@/lib/store/rhema-context";
+import { toast } from "sonner";
 
 interface LivePreviewProps {
     data: SermonData;
@@ -12,10 +16,19 @@ interface LivePreviewProps {
 export function LivePreview({ data }: LivePreviewProps) {
     const paperRef = useRef<HTMLDivElement>(null);
     const [isGenerating, setIsGenerating] = useState(false);
+    const { pdfExportTimestamp } = useRhema();
+
+    // Listen for export trigger from Right Panel
+    useEffect(() => {
+        if (pdfExportTimestamp) {
+            handleDownload();
+        }
+    }, [pdfExportTimestamp]);
 
     const handleDownload = async () => {
         if (!paperRef.current) return;
         setIsGenerating(true);
+        const toastId = toast.loading("Generating PDF...");
 
         try {
             // Dynamic import to ensure client-side execution
@@ -26,13 +39,15 @@ export function LivePreview({ data }: LivePreviewProps) {
                 margin: 10, // mm
                 filename: `${data.title || 'sermon'}.pdf`,
                 image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2 },
+                html2canvas: { scale: 2, useCORS: true },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
             };
 
             await html2pdf().set(opt).from(element).save();
+            toast.success("PDF Downloaded", { id: toastId });
         } catch (error) {
             console.error("PDF Generation failed", error);
+            toast.error("Failed to generate PDF", { id: toastId });
         } finally {
             setIsGenerating(false);
         }
@@ -42,20 +57,6 @@ export function LivePreview({ data }: LivePreviewProps) {
         <div className="h-full w-full bg-[#1c1c1c] flex flex-col items-center p-8 overflow-y-auto relative">
             {/* The Desk Texture */}
             <div className="absolute inset-0 bg-gradient-to-br from-[#1c1c1c] to-[#0a0a0a] opacity-50 pointer-events-none" />
-
-            {/* Toolbar */}
-            <div className="w-full max-w-[210mm] flex justify-end gap-2 mb-4 z-10">
-                <Button
-                    variant="outline"
-                    size="sm"
-                    className="bg-[#1c1c1c] text-white border-white/10 hover:bg-white/10"
-                    onClick={handleDownload}
-                    disabled={isGenerating}
-                >
-                    {isGenerating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
-                    {isGenerating ? "Exporting..." : "Download PDF"}
-                </Button>
-            </div>
 
             {/* The Paper (A4 Aspect Ratio) */}
             <div
@@ -79,7 +80,25 @@ export function LivePreview({ data }: LivePreviewProps) {
                     )}
 
                     <div className="prose prose-lg max-w-none font-serif text-gray-800 leading-relaxed whitespace-pre-wrap">
-                        {data.notes || <span className="text-gray-300 italic">Start typing your revelation...</span>}
+                        {data.notes ? (
+                            <ReactMarkdown
+                                remarkPlugins={[remarkBreaks]}
+                                components={{
+                                    strong: ({ children }) => <strong className="font-bold text-black">{children}</strong>,
+                                    em: ({ children }) => <em className="italic text-gray-800">{children}</em>,
+                                    h1: ({ children }) => <h1 className="text-2xl font-bold mt-6 mb-4 leading-tight">{children}</h1>,
+                                    h2: ({ children }) => <h2 className="text-xl font-bold mt-4 mb-3 border-b pb-1 border-gray-200">{children}</h2>,
+                                    ul: ({ children }) => <ul className="list-disc pl-5 space-y-2 my-4">{children}</ul>,
+                                    li: ({ children }) => <li className="pl-1 text-gray-700 leading-relaxed">{children}</li>,
+                                    p: ({ children }) => <p className="mb-4 text-justify whitespace-pre-line">{children}</p>,
+                                    hr: () => <hr className="my-8 border-t-2 border-gray-200 w-1/3 mx-auto" />, // Handle separators
+                                }}
+                            >
+                                {data.notes}
+                            </ReactMarkdown>
+                        ) : (
+                            <span className="text-gray-300 italic">Start typing your revelation...</span>
+                        )}
                     </div>
                 </div>
 
