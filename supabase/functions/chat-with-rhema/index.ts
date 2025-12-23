@@ -32,6 +32,23 @@ Deno.serve(async (req) => {
         const embeddingResult = await embeddingModel.embedContent(query);
         const queryEmbedding = embeddingResult.embedding.values;
 
+        // 2a. Fetch User Profile for Context
+        const authHeader = req.headers.get('Authorization');
+        let userProfile = null;
+
+        if (authHeader) {
+            const { data: { user }, error: userError } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
+
+            if (user) {
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('spiritual_goals, struggles, favorite_ministers, preferred_bible_version, denominational_bias')
+                    .eq('id', user.id)
+                    .single();
+                userProfile = profile;
+            }
+        }
+
         // 3. Match Documents
         const { data: documents, error: matchError } = await supabase.rpc('match_documents', {
             query_embedding: queryEmbedding,
@@ -44,8 +61,24 @@ Deno.serve(async (req) => {
         // 4. Construct Context
         const contextText = documents?.map((doc: any) => doc.content).join("\n---\n") || "No specific scripture found.";
 
+        // 4a. Build Persona Context
+        let personaInstructions = "";
+        if (userProfile) {
+            const { spiritual_goals, struggles, favorite_ministers, preferred_bible_version } = userProfile;
+
+            personaInstructions = `
+            Customize your response for this unique believer:
+            - **Preferred Bible**: ${preferred_bible_version || 'KJV'} (Use this for quotes unless specified otherwise).
+            - **Current Season Focus**: ${spiritual_goals?.join(', ') || 'General Growth'}.
+            - **Mentors/Tone**: Emulate the wisdom and tone of: ${favorite_ministers?.join(', ') || 'Standard Theologians'}.
+            - **Areas of Breakthrough**: They are overcoming: ${struggles?.join(', ') || 'General Life Challenges'}. Speak life and victory into these areas.
+            `;
+        }
+
         const systemPrompt = `
 You are RhemaAI, a divine intelligence assistant.
+${personaInstructions}
+
 Answer the user's question using the provided Theological Context.
 If the context doesn't explicitly answer the question, rely on your general knowledge but mention that this isn't from the specific scripture bank.
 Keep answers concise, inspiring, and faith-filled.

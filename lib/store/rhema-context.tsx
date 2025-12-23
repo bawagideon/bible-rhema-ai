@@ -7,6 +7,8 @@ import { SermonData } from '@/components/studio/sermon-builder';
 interface RhemaContextType {
     userRole: UserRole;
     userTier: UserRole;
+    userName: string;
+    userAvatar: string;
     toggleRole: () => void;
     isRightPanelOpen: boolean;
     toggleRightPanel: () => void;
@@ -23,6 +25,8 @@ const RhemaContext = createContext<RhemaContextType | undefined>(undefined);
 export function RhemaProvider({ children }: { children: ReactNode }) {
     const [userRole, setUserRole] = useState<UserRole>('SEEKER');
     const [userTier, setUserTier] = useState<UserRole>('SEEKER');
+    const [userName, setUserName] = useState<string>("Believer");
+    const [userAvatar, setUserAvatar] = useState<string>("");
     const [isRightPanelOpen, setIsRightPanelOpen] = useState(true); // Default to open
     const [sermonToLoad, setSermonToLoad] = useState<SermonData | null>(null);
     const [pdfExportTimestamp, setPdfExportTimestamp] = useState<number | null>(null);
@@ -38,13 +42,17 @@ export function RhemaProvider({ children }: { children: ReactNode }) {
             if (user) {
                 const { data: profile } = await supabase
                     .from('profiles')
-                    .select('tier')
+                    .select('tier, full_name, avatar_url')
                     .eq('id', user.id)
                     .single();
 
-                if (profile?.tier) {
-                    setUserRole(profile.tier as UserRole);
-                    setUserTier(profile.tier as UserRole);
+                if (profile) {
+                    if (profile.tier) {
+                        setUserRole(profile.tier as UserRole);
+                        setUserTier(profile.tier as UserRole);
+                    }
+                    if (profile.full_name) setUserName(profile.full_name);
+                    if (profile.avatar_url) setUserAvatar(profile.avatar_url);
                 }
             }
         };
@@ -67,6 +75,8 @@ export function RhemaProvider({ children }: { children: ReactNode }) {
         <RhemaContext.Provider value={{
             userRole,
             userTier,
+            userName,
+            userAvatar,
             toggleRole,
             isRightPanelOpen,
             toggleRightPanel,
