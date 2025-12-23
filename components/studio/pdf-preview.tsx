@@ -1,39 +1,97 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import { Loader2 } from "lucide-react";
-import { SermonPdfTemplate } from "./sermon-pdf-template";
+import { useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Download, Loader2, Printer } from "lucide-react";
 import type { SermonData } from "./sermon-builder";
-
-// Dynamically import PDFViewer to avoid SSR issues
-const PDFViewer = dynamic(
-    () => import("@react-pdf/renderer").then((mod) => mod.PDFViewer),
-    {
-        ssr: false,
-        loading: () => (
-            <div className="flex h-full w-full items-center justify-center text-muted-foreground p-8 bg-[#1c1c1c]">
-                <Loader2 className="mr-2 h-6 w-6 animate-spin text-[#D4AF37]" />
-                <span className="font-serif italic text-gray-400">Preparing Sanctuary Paper...</span>
-            </div>
-        ),
-    }
-);
 
 interface LivePreviewProps {
     data: SermonData;
 }
 
-// CHANGE: Use 'export default' here
-export default function LivePreview({ data }: LivePreviewProps) {
+export function LivePreview({ data }: LivePreviewProps) {
+    const paperRef = useRef<HTMLDivElement>(null);
+    const [isGenerating, setIsGenerating] = useState(false);
+
+    const handleDownload = async () => {
+        if (!paperRef.current) return;
+        setIsGenerating(true);
+
+        try {
+            // Dynamic import to ensure client-side execution
+            const html2pdf = (await import('html2pdf.js')).default;
+
+            const element = paperRef.current;
+            const opt: any = {
+                margin: 10, // mm
+                filename: `${data.title || 'sermon'}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2 },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            await html2pdf().set(opt).from(element).save();
+        } catch (error) {
+            console.error("PDF Generation failed", error);
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
     return (
-        <div className="h-full w-full bg-[#1c1c1c] border-l border-border/40 shadow-inner p-0 overflow-hidden">
-            <PDFViewer width="100%" height="100%" className="border-none w-full h-full">
-                <SermonPdfTemplate
-                    title={data.title}
-                    scripture={data.scripture}
-                    content={data.notes}
-                />
-            </PDFViewer>
+        <div className="h-full w-full bg-[#1c1c1c] flex flex-col items-center p-8 overflow-y-auto relative">
+            {/* The Desk Texture */}
+            <div className="absolute inset-0 bg-gradient-to-br from-[#1c1c1c] to-[#0a0a0a] opacity-50 pointer-events-none" />
+
+            {/* Toolbar */}
+            <div className="w-full max-w-[210mm] flex justify-end gap-2 mb-4 z-10">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="bg-[#1c1c1c] text-white border-white/10 hover:bg-white/10"
+                    onClick={handleDownload}
+                    disabled={isGenerating}
+                >
+                    {isGenerating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
+                    {isGenerating ? "Exporting..." : "Download PDF"}
+                </Button>
+            </div>
+
+            {/* The Paper (A4 Aspect Ratio) */}
+            <div
+                ref={paperRef}
+                className="relative bg-white text-black shadow-2xl w-full max-w-[210mm] min-h-[297mm] p-[25mm] mx-auto transition-transform duration-300 ease-in-out shrink-0"
+            >
+                {/* Visual Header */}
+                <div className="text-center mb-12 opacity-80 border-b pb-6 border-[#D4AF37]/30">
+                    <span className="font-serif text-xs tracking-[0.3em] uppercase text-[#D4AF37] block mb-2">Rhema AI Studio</span>
+                    <h1 className="font-serif text-4xl font-bold leading-tight tracking-tight text-gray-900">
+                        {data.title || <span className="text-gray-200">Untitled Sermon</span>}
+                    </h1>
+                </div>
+
+                {/* Content */}
+                <div className="space-y-8">
+                    {data.scripture && (
+                        <div className="bg-[#fcfbf9] border-l-4 border-[#D4AF37] p-6 italic font-serif text-xl text-gray-700">
+                            “{data.scripture}”
+                        </div>
+                    )}
+
+                    <div className="prose prose-lg max-w-none font-serif text-gray-800 leading-relaxed whitespace-pre-wrap">
+                        {data.notes || <span className="text-gray-300 italic">Start typing your revelation...</span>}
+                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className="mt-20 pt-8 border-t border-gray-100 flex justify-between items-end text-[10px] text-gray-400 font-sans uppercase tracking-widest">
+                    <span>Generated by RhemaAI</span>
+                    <span>Divine Intelligence</span>
+                </div>
+            </div>
+
+            {/* Spacer for scroll */}
+            <div className="h-20 shrink-0" />
         </div>
     );
 }

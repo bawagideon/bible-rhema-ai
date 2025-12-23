@@ -5,6 +5,9 @@ import { ShellLayout } from "@/components/layout/shell-layout";
 import { SermonBuilder, type SermonData } from "@/components/studio/sermon-builder";
 import { LivePreview } from "@/components/studio/pdf-preview";
 
+// No more dynamic import needed for the container itself
+// The html2pdf library is dynamically imported inside the component on click.
+
 export default function StudioPage() {
     const [sermonData, setSermonData] = useState<SermonData>({
         title: "",
@@ -34,7 +37,7 @@ III. The Resolution: Walking in Grace
 Conclusion:
    - Let us not faint. The weight is building something in us that will last forever.`;
 
-        setSermonData(prev => ({ ...prev, notes: aiContent }));
+        setSermonData((prev: SermonData) => ({ ...prev, notes: aiContent }));
     };
 
     return (
