@@ -11,16 +11,17 @@ import { fetchSermons, SavedSermon } from "@/lib/api";
 
 export function RightPanel() {
     const pathname = usePathname();
-    const { isRightPanelOpen, setSermonToLoad, triggerPdfExport } = useRhema();
+    const { isRightPanelOpen, setSermonToLoad, triggerPdfExport, lastSavedTimestamp } = useRhema();
     const [sermons, setSermons] = useState<SavedSermon[]>([]);
     const [loadingSermons, setLoadingSermons] = useState(false);
 
     useEffect(() => {
         // Fetch sermons when the panel is open and we are in the studio
+        // Also refetch when a new sermon is saved (lastSavedTimestamp changes)
         if (isRightPanelOpen && pathname === "/studio") {
             loadSermons();
         }
-    }, [isRightPanelOpen, pathname]);
+    }, [isRightPanelOpen, pathname, lastSavedTimestamp]);
 
     const loadSermons = async () => {
         setLoadingSermons(true);

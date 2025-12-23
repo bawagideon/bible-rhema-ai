@@ -13,6 +13,8 @@ interface RhemaContextType {
     setSermonToLoad: (sermon: SermonData | null) => void;
     pdfExportTimestamp: number | null;
     triggerPdfExport: () => void;
+    lastSavedTimestamp: number | null;
+    triggerSaveComplete: () => void;
 }
 
 const RhemaContext = createContext<RhemaContextType | undefined>(undefined);
@@ -22,6 +24,7 @@ export function RhemaProvider({ children }: { children: ReactNode }) {
     const [isRightPanelOpen, setIsRightPanelOpen] = useState(true); // Default to open
     const [sermonToLoad, setSermonToLoad] = useState<SermonData | null>(null);
     const [pdfExportTimestamp, setPdfExportTimestamp] = useState<number | null>(null);
+    const [lastSavedTimestamp, setLastSavedTimestamp] = useState<number | null>(null);
 
     const toggleRole = () => {
         setUserRole(prev => {
@@ -33,6 +36,7 @@ export function RhemaProvider({ children }: { children: ReactNode }) {
 
     const toggleRightPanel = () => setIsRightPanelOpen(prev => !prev);
     const triggerPdfExport = () => setPdfExportTimestamp(Date.now());
+    const triggerSaveComplete = () => setLastSavedTimestamp(Date.now());
 
     return (
         <RhemaContext.Provider value={{
@@ -43,7 +47,9 @@ export function RhemaProvider({ children }: { children: ReactNode }) {
             sermonToLoad,
             setSermonToLoad,
             pdfExportTimestamp,
-            triggerPdfExport
+            triggerPdfExport,
+            lastSavedTimestamp,
+            triggerSaveComplete
         }}>
             {children}
         </RhemaContext.Provider>

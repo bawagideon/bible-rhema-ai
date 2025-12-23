@@ -12,7 +12,7 @@ import { useRhema } from "@/lib/store/rhema-context";
 // The html2pdf library is dynamically imported inside the component on click.
 
 export default function StudioPage() {
-    const { sermonToLoad, setSermonToLoad } = useRhema();
+    const { sermonToLoad, setSermonToLoad, triggerSaveComplete } = useRhema();
     const [isSaving, setIsSaving] = useState(false);
     const [sermonData, setSermonData] = useState<SermonData>({
         title: "",
@@ -26,9 +26,6 @@ export default function StudioPage() {
         if (sermonToLoad) {
             setSermonData(sermonToLoad);
             toast.success(`Loaded "${sermonToLoad.title || 'Sermon'}"`);
-            // Clear the context so we don't re-load on every render/mount inappropriately
-            // setSermonToLoad(null); 
-            // Actually, keep it for now or clear it? Better to clear it to avoid loops if we change routes back and forth
             setSermonToLoad(null);
         }
     }, [sermonToLoad, setSermonToLoad]);
@@ -64,6 +61,7 @@ Conclusion:
 
         if (result.success) {
             toast.success("Sermon saved to library!");
+            triggerSaveComplete(); // Refresh the sidebar
         } else {
             toast.error("Failed to save sermon.");
         }

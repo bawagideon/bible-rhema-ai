@@ -4,8 +4,6 @@ import { useRef, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Download, Loader2, Printer } from "lucide-react";
 import type { SermonData } from "./sermon-builder";
-import ReactMarkdown from 'react-markdown';
-import remarkBreaks from 'remark-breaks';
 import { useRhema } from "@/lib/store/rhema-context";
 import { toast } from "sonner";
 
@@ -81,21 +79,10 @@ export function LivePreview({ data }: LivePreviewProps) {
 
                     <div className="prose prose-lg max-w-none font-serif text-gray-800 leading-relaxed whitespace-pre-wrap">
                         {data.notes ? (
-                            <ReactMarkdown
-                                remarkPlugins={[remarkBreaks]}
-                                components={{
-                                    strong: ({ children }) => <strong className="font-bold text-black">{children}</strong>,
-                                    em: ({ children }) => <em className="italic text-gray-800">{children}</em>,
-                                    h1: ({ children }) => <h1 className="text-2xl font-bold mt-6 mb-4 leading-tight">{children}</h1>,
-                                    h2: ({ children }) => <h2 className="text-xl font-bold mt-4 mb-3 border-b pb-1 border-gray-200">{children}</h2>,
-                                    ul: ({ children }) => <ul className="list-disc pl-5 space-y-2 my-4">{children}</ul>,
-                                    li: ({ children }) => <li className="pl-1 text-gray-700 leading-relaxed">{children}</li>,
-                                    p: ({ children }) => <p className="mb-4 text-justify whitespace-pre-line">{children}</p>,
-                                    hr: () => <hr className="my-8 border-t-2 border-gray-200 w-1/3 mx-auto" />, // Handle separators
-                                }}
-                            >
-                                {data.notes}
-                            </ReactMarkdown>
+                            <div
+                                className="tiptap-preview"
+                                dangerouslySetInnerHTML={{ __html: data.notes }}
+                            />
                         ) : (
                             <span className="text-gray-300 italic">Start typing your revelation...</span>
                         )}
