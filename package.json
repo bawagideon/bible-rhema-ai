@@ -26,6 +26,7 @@
     "@react-pdf/renderer": "^4.3.1",
     "@supabase/supabase-js": "^2.89.0",
     "@tiptap/extension-placeholder": "^3.14.0",
+    "@tiptap/extension-typography": "^3.14.0",
     "@tiptap/react": "^3.14.0",
     "@tiptap/starter-kit": "^3.14.0",
     "autoprefixer": "^10.4.23",
