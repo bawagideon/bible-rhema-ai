@@ -16,18 +16,18 @@ export function useFeatureAccess() {
         // Basic role hierarchy check
         if (user.role === 'MINISTER') return true;
         if (user.role === 'DISCIPLE' && feature !== 'studio' && feature !== 'pdf_export') return true;
-        if (user.role === 'GUEST' && ['home', 'library:read'].includes(feature)) return true;
+        if (user.role === 'SEEKER' && ['home', 'library:read'].includes(feature)) return true;
 
         // Fallback to explicit permissions list if needed
         const permissions = ROLE_PERMISSIONS[user.role];
-        return permissions.includes(feature);
+        return permissions?.includes(feature) || false;
     };
 
     const hasRole = (role: UserRole) => {
         if (user.role === role) return true;
-        // Hierarchy: MINISTER > DISCIPLE > GUEST
+        // Hierarchy: MINISTER > DISCIPLE > SEEKER
         if (user.role === 'MINISTER') return true;
-        if (user.role === 'DISCIPLE' && role === 'GUEST') return true;
+        if (user.role === 'DISCIPLE' && role === 'SEEKER') return true;
         return false;
     };
 

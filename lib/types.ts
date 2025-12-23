@@ -1,4 +1,4 @@
-export type UserRole = 'GUEST' | 'DISCIPLE' | 'MINISTER';
+export type UserRole = 'SEEKER' | 'DISCIPLE' | 'MINISTER';
 
 export interface UserProfile {
     id: string;
@@ -9,7 +9,7 @@ export interface UserProfile {
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
-    GUEST: ['home', 'library:read'],
+    SEEKER: ['home', 'library:read'],
     DISCIPLE: ['home', 'spirit_os', 'altar', 'library:read', 'library:write'],
     MINISTER: ['home', 'spirit_os', 'altar', 'studio', 'library:all', 'pdf_export'],
 };

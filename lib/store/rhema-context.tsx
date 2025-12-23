@@ -6,6 +6,7 @@ import { SermonData } from '@/components/studio/sermon-builder';
 
 interface RhemaContextType {
     userRole: UserRole;
+    userTier: UserRole;
     toggleRole: () => void;
     isRightPanelOpen: boolean;
     toggleRightPanel: () => void;
@@ -20,16 +21,40 @@ interface RhemaContextType {
 const RhemaContext = createContext<RhemaContextType | undefined>(undefined);
 
 export function RhemaProvider({ children }: { children: ReactNode }) {
-    const [userRole, setUserRole] = useState<UserRole>('MINISTER');
+    const [userRole, setUserRole] = useState<UserRole>('SEEKER');
+    const [userTier, setUserTier] = useState<UserRole>('SEEKER');
     const [isRightPanelOpen, setIsRightPanelOpen] = useState(true); // Default to open
     const [sermonToLoad, setSermonToLoad] = useState<SermonData | null>(null);
     const [pdfExportTimestamp, setPdfExportTimestamp] = useState<number | null>(null);
     const [lastSavedTimestamp, setLastSavedTimestamp] = useState<number | null>(null);
 
+    // Fetch Tier on Mount
+    React.useEffect(() => {
+        const fetchTier = async () => {
+            const { supabase } = await import('@/lib/supabaseClient');
+            if (!supabase) return;
+
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('tier')
+                    .eq('id', user.id)
+                    .single();
+
+                if (profile?.tier) {
+                    setUserRole(profile.tier as UserRole);
+                    setUserTier(profile.tier as UserRole);
+                }
+            }
+        };
+        fetchTier();
+    }, []);
+
     const toggleRole = () => {
         setUserRole(prev => {
             if (prev === 'MINISTER') return 'DISCIPLE';
-            if (prev === 'DISCIPLE') return 'GUEST';
+            if (prev === 'DISCIPLE') return 'SEEKER';
             return 'MINISTER';
         });
     };
@@ -41,6 +66,7 @@ export function RhemaProvider({ children }: { children: ReactNode }) {
     return (
         <RhemaContext.Provider value={{
             userRole,
+            userTier,
             toggleRole,
             isRightPanelOpen,
             toggleRightPanel,

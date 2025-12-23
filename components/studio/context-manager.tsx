@@ -3,8 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, X, BookOpen, Quote } from "lucide-react";
+import { Plus, X, Layers, Library } from "lucide-react";
 
 export interface ContextItem {
     id: string;
@@ -29,7 +28,7 @@ export function ContextManager({ contextItems, onAddContext, onRemoveContext }: 
 
         const newItem: ContextItem = {
             id: crypto.randomUUID(),
-            type: 'note', // Default for now
+            type: 'note',
             content: newContent,
             label: newLabel || newContent.substring(0, 20) + "..."
         };
@@ -41,66 +40,80 @@ export function ContextManager({ contextItems, onAddContext, onRemoveContext }: 
     };
 
     return (
-        <div className="border border-border rounded-lg bg-card/50 overflow-hidden">
-            <div className="p-3 bg-muted/50 border-b border-border flex justify-between items-center">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                    <BookOpen className="h-3 w-3" /> Context Engine
+        <div className="flex flex-col h-full bg-[#f9fafb] border-r border-[#e5e7eb]">
+            {/* Header */}
+            <div className="p-4 border-b border-[#e5e7eb] bg-white">
+                <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-[#D4AF37]" />
+                    Context Engine
                 </h3>
-                <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">
-                    {contextItems.length} active
-                </span>
+                <p className="text-[10px] text-gray-500 mt-1">
+                    Add custom sources for the AI to reference.
+                </p>
             </div>
 
-            <div className="p-3 space-y-3">
-                {/* Active Chips */}
-                <div className="flex flex-wrap gap-2">
-                    {contextItems.map(item => (
-                        <div key={item.id} className="flex items-center gap-1 bg-background border border-border rounded px-2 py-1 text-xs shadow-sm hover:border-primary/50 transition-colors group">
-                            <span className="max-w-[120px] truncate">{item.label}</span>
-                            <button
-                                onClick={() => onRemoveContext(item.id)}
-                                className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                                <X className="h-3 w-3" />
-                            </button>
+            {/* List */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                {contextItems.length === 0 ? (
+                    <div className="text-center py-8 opacity-50">
+                        <Library className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                        <p className="text-xs text-gray-500">No context active.</p>
+                    </div>
+                ) : (
+                    contextItems.map(item => (
+                        <div key={item.id} className="relative group bg-white border border-gray-200 rounded-md p-2 shadow-sm hover:shadow-md transition-shadow">
+                            <div className="flex justify-between items-start">
+                                <span className="text-xs font-medium text-gray-800 line-clamp-1">{item.label}</span>
+                                <button
+                                    onClick={() => onRemoveContext(item.id)}
+                                    className="text-gray-400 hover:text-red-500 transition-colors"
+                                >
+                                    <X className="h-3 w-3" />
+                                </button>
+                            </div>
+                            <p className="text-[10px] text-gray-500 mt-1 line-clamp-2 leading-tight">
+                                {item.content}
+                            </p>
                         </div>
-                    ))}
-                    {contextItems.length === 0 && (
-                        <p className="text-xs text-muted-foreground italic">No context loaded. AI will rely on general doctrine.</p>
-                    )}
-                </div>
+                    ))
+                )}
+            </div>
 
-                {/* Add New */}
+            {/* Footer / Add Action */}
+            <div className="p-3 border-t border-[#e5e7eb] bg-white">
                 {isOpen ? (
-                    <div className="space-y-2 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="space-y-3 animate-in slide-in-from-bottom-2 duration-200">
                         <input
-                            className="w-full bg-background border border-border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50"
-                            placeholder="Label (e.g. 'My Testimony')"
+                            className="w-full text-xs font-medium bg-gray-50 border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
+                            placeholder="Title (e.g. 'My Journal')"
                             value={newLabel}
                             onChange={(e) => setNewLabel(e.target.value)}
                         />
                         <Textarea
-                            placeholder="Paste scripture, quotes, or notes here..."
-                            className="text-xs min-h-[80px]"
+                            placeholder="Paste content here..."
+                            className="text-xs min-h-[100px] resize-none bg-gray-50 border-gray-200 focus:ring-[#D4AF37]"
                             value={newContent}
                             onChange={(e) => setNewContent(e.target.value)}
                         />
-                        <div className="flex justify-end gap-2">
-                            <Button size="sm" variant="ghost" onClick={() => setIsOpen(false)} className="h-7 text-xs">Cancel</Button>
-                            <Button size="sm" onClick={handleAdd} className="h-7 text-xs bg-[#D4AF37] text-black hover:bg-[#b5952f]">Add Context</Button>
+                        <div className="flex gap-2">
+                            <Button onClick={handleAdd} size="sm" className="flex-1 bg-[#D4AF37] hover:bg-[#b5952f] text-black text-xs font-medium">
+                                Add
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => setIsOpen(false)} className="px-2 text-xs text-gray-500">
+                                Cancel
+                            </Button>
                         </div>
                     </div>
                 ) : (
                     <Button
-                        variant="outline"
-                        size="sm"
                         onClick={() => setIsOpen(true)}
-                        className="w-full text-xs h-8 border-dashed border-border text-muted-foreground hover:text-primary hover:border-primary/50"
+                        className="w-full bg-white border border-dashed border-gray-300 text-gray-600 hover:border-[#D4AF37] hover:text-[#D4AF37] text-xs h-9 shadow-sm"
                     >
-                        <Plus className="h-3 w-3 mr-1" /> Add Reference Material
+                        <Plus className="h-3 w-3 mr-2" /> Add Material
                     </Button>
                 )}
             </div>
         </div>
     );
 }
+
