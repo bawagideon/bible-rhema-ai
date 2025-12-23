@@ -1,0 +1,115 @@
+
+// @ts-nocheck
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { GoogleGenerativeAI } from 'https://esm.sh/@google/generative-ai';
+
+const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+Deno.serve(async (req) => {
+    if (req.method === 'OPTIONS') {
+        return new Response('ok', { headers: corsHeaders });
+    }
+
+    try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!; // Use Service Role for Insert
+        const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY')!; // Using same env var name as chat function
+
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+        const genAI = new GoogleGenerativeAI(googleApiKey);
+
+        // 1. Get User from Auth Header
+        const authHeader = req.headers.get('Authorization');
+        if (!authHeader) throw new Error('Missing Authorization Header');
+
+        const { data: { user }, error: userError } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
+        if (userError || !user) throw new Error('Invalid Token');
+
+        // 2. Check if content already exists for today (prevent race conditions)
+        const today = new Date().toISOString().split('T')[0];
+        const { data: existing } = await supabase
+            .from('daily_rhema')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('date', today)
+            .single();
+
+        if (existing) {
+            return new Response(JSON.stringify(existing), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+        }
+
+        // 3. Fetch Profile Data
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('spiritual_goals, struggles, preferred_bible_version')
+            .eq('id', user.id)
+            .single();
+
+        const goals = profile?.spiritual_goals?.join(', ') || 'Growth in Grace';
+        const struggles = profile?.struggles?.join(', ') || 'Daily Distractions';
+        const bible = profile?.preferred_bible_version || 'KJV';
+
+        // 4. Generate Content with Gemini
+        // We want JSON output.
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", generationConfig: { responseMimeType: "application/json" } });
+
+        const prompt = `
+        You are a spiritual mentor. Generate a 'Daily Rhema' for a believer.
+        
+        Context:
+        - Goals: ${goals}
+        - Struggles: ${struggles}
+        - Bible Version: ${bible}
+        
+        Output a JSON object with these exact keys:
+        - "scripture_ref": A formatted scripture reference (e.g., "John 3:16 (${bible})").
+        - "scripture_text": The actual text of the verse.
+        - "content": A short, 2-3 sentence encouraging word connecting the scripture to their goals/struggles.
+        - "prayer_focus": A 1-sentence prayer declaration.
+        `;
+
+        const result = await model.generateContent(prompt);
+        const responseText = result.response.text();
+        const generatedData = JSON.parse(responseText);
+
+        // 5. Insert into DB
+        const { data: inserted, error: insertError } = await supabase
+            .from('daily_rhema')
+            .insert({
+                user_id: user.id,
+                date: today,
+                scripture_ref: generatedData.scripture_ref,
+                scripture_text: generatedData.scripture_text,
+                content: generatedData.content,
+                prayer_focus: generatedData.prayer_focus
+            })
+            .select() // Return the inserted row
+            .single();
+
+        // Wait! I need to fix the migration first if I want scripture_text. 
+        // Or I can cram it into 'scripture_ref' like "John 3:16 - For God so loved..."
+        // Or I can rely on the frontend to fetch the verse text? No, that's annoying.
+        // I'll check DailyRhemaCard again to see what it needs.
+        // DailyRhemaCard({ date, scripture, reference, rhema })
+        // It needs 'scripture' (text) and 'reference'.
+        // So I definitely need a place for scripture text.
+        // I will update the migration to include `scripture_text`.
+
+        if (insertError) throw insertError;
+
+        return new Response(JSON.stringify(inserted), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+
+    } catch (error) {
+        return new Response(JSON.stringify({ error: error.message }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 500,
+        });
+    }
+});

@@ -1,21 +1,106 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { Sparkles, Calendar } from "lucide-react";
+import { Sparkles, Calendar, RefreshCw } from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
+import { useRhema } from "@/lib/store/rhema-context";
+import { toast } from "sonner";
 
-interface DailyRhemaCardProps {
+interface DailyRhema {
+    scripture_text: string;
+    scripture_ref: string;
+    content: string;
+    prayer_focus: string;
     date: string;
-    scripture: string;
-    reference: string;
-    rhema: string;
-    className?: string;
 }
 
-export function DailyRhemaCard({ date, scripture, reference, rhema, className }: DailyRhemaCardProps) {
+interface DailyRhemaCardProps {
+    className?: string;
+    // Optional props for optimistic updates or initial data
+    initialData?: DailyRhema;
+}
+
+export function DailyRhemaCard({ className, initialData }: DailyRhemaCardProps) {
+    const { userTier } = useRhema();
+    const [data, setData] = useState<DailyRhema | null>(initialData || null);
+    const [loading, setLoading] = useState(!initialData);
+    const [generating, setGenerating] = useState(false);
+
+    const isMinister = userTier === 'MINISTER';
+
+    useEffect(() => {
+        if (!initialData) {
+            checkDailyRhema();
+        }
+    }, [initialData]);
+
+    const checkDailyRhema = async () => {
+        if (!supabase) {
+            toast.error("Supabase client not initialized");
+            setLoading(false);
+            return;
+        }
+
+        try {
+            setLoading(true);
+            const today = new Date().toISOString().split('T')[0];
+            const { data: existing, error } = await supabase
+                .from('daily_rhema')
+                .select('*')
+                .eq('date', today)
+                .single();
+
+            if (existing) {
+                setData(existing);
+            } else {
+                await generateRhema();
+            }
+        } catch (error) {
+            console.error("Error fetching daily rhema:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const generateRhema = async () => {
+        if (!supabase) return;
+
+        try {
+            setGenerating(true);
+            const { data: newData, error } = await supabase.functions.invoke('generate-daily-rhema');
+
+            if (error) throw error;
+
+            if (newData) {
+                setData(newData);
+                toast.success("Fresh Manna Received!");
+            }
+        } catch (error) {
+            console.error("Generation failed:", error);
+            toast.error("Failed to receive daily word.");
+        } finally {
+            setGenerating(false);
+        }
+    };
+
+    if (loading) {
+        return (
+            <Card className={cn("relative overflow-hidden border-border/60 min-h-[300px] flex items-center justify-center", className)}>
+                <div className="flex flex-col items-center gap-2 animate-pulse text-muted-foreground">
+                    <Sparkles className="w-6 h-6 animate-spin-slow" />
+                    <p>Seeking the Lord...</p>
+                </div>
+            </Card>
+        );
+    }
+
+    if (!data) return null;
+
     return (
-        <Card className={cn("relative overflow-hidden border-border/60 bg-gradient-to-br from-card to-card/50", className)}>
+        <Card className={cn("relative overflow-hidden border-border/60 bg-gradient-to-br from-card to-card/50 transition-all duration-500", className)}>
             {/* Decorative Gold Gradient Border Effect */}
             <div className="absolute inset-0 bg-gradient-to-r from-primary/20 via-transparent to-primary/5 opacity-50 pointer-events-none" />
             <div className="absolute top-0 left-0 w-1 h-full bg-primary/40" />
@@ -24,7 +109,7 @@ export function DailyRhemaCard({ date, scripture, reference, rhema, className }:
                 <div className="flex items-center justify-between text-muted-foreground text-sm uppercase tracking-widest">
                     <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4" />
-                        <span>{date}</span>
+                        <span>{data.date}</span>
                     </div>
                     <div className="flex items-center gap-1 text-primary/80">
                         <Sparkles className="w-3 h-3" />
@@ -33,23 +118,42 @@ export function DailyRhemaCard({ date, scripture, reference, rhema, className }:
                 </div>
 
                 <div className="space-y-4">
-                    <blockquote className="font-serif text-2xl md:text-4xl leading-tight text-foreground border-l-4 border-primary/20 pl-6 italic">
-                        "{scripture}"
+                    <blockquote className="font-serif text-2xl md:text-3xl leading-tight text-foreground border-l-4 border-primary/20 pl-6 italic">
+                        "{data.scripture_text}"
                     </blockquote>
-                    <p className="text-right text-lg md:text-xl font-serif text-primary mt-2">— {reference}</p>
+                    <p className="text-right text-lg font-serif text-primary mt-2">— {data.scripture_ref}</p>
                 </div>
 
                 <div className="bg-muted/30 rounded-lg p-5 border border-border/50 backdrop-blur-sm">
                     <p className="text-sm md:text-base text-muted-foreground leading-relaxed">
                         <strong className="text-foreground/90 mr-1">Insight:</strong>
-                        {rhema}
+                        {data.content}
                     </p>
+                    <div className="mt-4 pt-4 border-t border-border/40">
+                        <p className="text-sm text-primary/90 italic">
+                            <span className="font-semibold not-italic text-muted-foreground mr-1">Prayer:</span>
+                            {data.prayer_focus}
+                        </p>
+                    </div>
                 </div>
 
-                <div className="pt-2">
+                <div className="pt-2 flex justify-between items-center">
                     <Button className="bg-primary hover:bg-primary/90 text-black font-semibold min-w-[140px]">
                         Meditate
                     </Button>
+
+                    {isMinister && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={generateRhema}
+                            disabled={generating}
+                            className={cn("text-muted-foreground hover:text-primary", generating && "animate-spin")}
+                            title="Request New Manna (Minister Only)"
+                        >
+                            <RefreshCw className="w-4 h-4" />
+                        </Button>
+                    )}
                 </div>
             </CardContent>
         </Card>

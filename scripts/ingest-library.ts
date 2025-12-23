@@ -4,6 +4,9 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const pdf = require('pdf-parse');
 
 dotenv.config({ path: '.env.local' });
 
@@ -42,7 +45,14 @@ async function ingestFile(filePath: string) {
     const filename = path.basename(filePath);
     console.log(`Processing: ${filename}`);
 
-    const content = fs.readFileSync(filePath, 'utf-8');
+    let content = '';
+    if (filename.endsWith('.pdf')) {
+        const dataBuffer = fs.readFileSync(filePath);
+        const data = await pdf(dataBuffer);
+        content = data.text;
+    } else {
+        content = fs.readFileSync(filePath, 'utf-8');
+    }
 
     // Naive 1000 char chunking. For better results, use langchain's RecursiveCharacterTextSplitter
     const chunks = chunkText(content, CHUNK_SIZE, OVERLAP);
@@ -86,8 +96,7 @@ async function main() {
         return;
     }
 
-    const files = fs.readdirSync(LIBRARY_PATH).filter(f => f.endsWith('.txt') || f.endsWith('.md'));
-    // Note: PDF parsing requires 'pdf-parse' or similar. For now supporting text based.
+    const files = fs.readdirSync(LIBRARY_PATH).filter(f => f.endsWith('.txt') || f.endsWith('.md') || f.endsWith('.pdf'));
 
     console.log(`Found ${files.length} files to ingest.`);
 
