@@ -91,15 +91,6 @@ Deno.serve(async (req) => {
             .select() // Return the inserted row
             .single();
 
-        // Wait! I need to fix the migration first if I want scripture_text. 
-        // Or I can cram it into 'scripture_ref' like "John 3:16 - For God so loved..."
-        // Or I can rely on the frontend to fetch the verse text? No, that's annoying.
-        // I'll check DailyRhemaCard again to see what it needs.
-        // DailyRhemaCard({ date, scripture, reference, rhema })
-        // It needs 'scripture' (text) and 'reference'.
-        // So I definitely need a place for scripture text.
-        // I will update the migration to include `scripture_text`.
-
         if (insertError) throw insertError;
 
         return new Response(JSON.stringify(inserted), {
