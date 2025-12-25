@@ -66,6 +66,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         checkSession();
 
+        // Safety Timeout: Force loading to false if session check hangs (e.g., network issues)
+        const safetyTimer = setTimeout(() => {
+            if (loading) {
+                console.warn("Auth check timed out. Forcing app load.");
+                setLoading(false);
+            }
+        }, 5000); // 5 seconds max
+
         // Listen for changes
         if (!supabase) return;
 
@@ -83,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
 
         return () => {
+            clearTimeout(safetyTimer);
             subscription.unsubscribe();
         };
     }, []);
@@ -124,6 +133,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             if (profile) {
                 setHasOnboarded(profile.has_completed_onboarding);
+            } else {
+                // Profile missing (e.g. deleted manually). Treat as not onboarded.
+                console.warn("User exists but profile is missing. Enforcing onboarding.");
+                setHasOnboarded(false);
             }
 
         } catch (e) {
