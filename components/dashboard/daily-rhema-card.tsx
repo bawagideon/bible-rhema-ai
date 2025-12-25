@@ -78,9 +78,24 @@ export function DailyRhemaCard({ className, initialData }: DailyRhemaCardProps) 
                 setData(newData);
                 toast.success("Fresh Manna Received!");
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error("Generation failed:", error);
-            toast.error("Failed to receive daily word.");
+
+            // Try to extract detailed error message from Edge Function response
+            if (error && typeof error === 'object' && 'context' in error) {
+                try {
+                    const response = await (error as any).context.json();
+                    console.error("Edge Function Error Details:", response);
+                    if (response.error) {
+                        toast.error(`Error: ${response.error}`);
+                        return;
+                    }
+                } catch (e) {
+                    console.log("Could not parse error context JSON", e);
+                }
+            }
+
+            toast.error("Failed to receive daily word. Check console for details.");
         } finally {
             setGenerating(false);
         }
