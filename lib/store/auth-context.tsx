@@ -39,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         // Check active session
         const checkSession = async () => {
+            console.log("AuthContext: Checking session...");
             if (!supabase) {
                 console.log("Supabase keys missing. Defaulting to logged out (Simulated Env).");
                 setUser(null); // Wait for manual login
@@ -184,9 +185,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     }, [user, loading, pathname, router, hasOnboarded]);
 
+    // Derived state for Render Guard
+    const isAuthGroup = pathname === '/login' || pathname === '/signup';
+    const isProtected = !isAuthGroup; // Pages that require auth
+    const isOnboardingPage = pathname === '/onboarding';
+
+    // Determine if we are in a "Redirecting" state
+    // This blocks the UI even if loading=false, ensuring no flash of content before router.push takes effect
+    const shouldRedirectToLogin = !loading && !user && isProtected;
+    const shouldRedirectToOnboarding = !loading && user && hasOnboarded === false && !isOnboardingPage;
+    const shouldRedirectToHome = !loading && user && ((isAuthGroup) || (hasOnboarded === true && isOnboardingPage));
+
+    // If any redirect is pending, we show the loader
+    const showLoader = loading || shouldRedirectToLogin || shouldRedirectToOnboarding || shouldRedirectToHome;
+
     return (
         <AuthContext.Provider value={{ user, loading, demoMode, signOut, signInWithDemo }}>
-            {children}
+            {showLoader ? (
+                <div className="h-screen w-full flex flex-col items-center justify-center bg-background text-foreground">
+                    <div className="flex flex-col items-center animate-pulse">
+                        <span className="text-2xl font-serif font-bold tracking-widest uppercase mb-2">
+                            Rhema<span className="text-primary">AI</span>
+                        </span>
+                        <span className="text-xs text-muted-foreground uppercase tracking-widest">Divine Intelligence</span>
+                    </div>
+                </div>
+            ) : (
+                children
+            )}
         </AuthContext.Provider>
     );
 }

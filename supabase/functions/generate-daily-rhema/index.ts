@@ -14,9 +14,13 @@ Deno.serve(async (req) => {
     }
 
     try {
-        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!; // Use Service Role for Insert
-        const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY')!; // Using same env var name as chat function
+        const supabaseUrl = Deno.env.get('SUPABASE_URL');
+        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+        const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY');
+
+        if (!supabaseUrl || !supabaseServiceKey || !googleApiKey) {
+            throw new Error(`Missing Environment Variables: ${!supabaseUrl ? 'URL ' : ''}${!supabaseServiceKey ? 'SERVICE_KEY ' : ''}${!googleApiKey ? 'GOOGLE_KEY ' : ''}`);
+        }
 
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
         const genAI = new GoogleGenerativeAI(googleApiKey);
@@ -26,7 +30,7 @@ Deno.serve(async (req) => {
         if (!authHeader) throw new Error('Missing Authorization Header');
 
         const { data: { user }, error: userError } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
-        if (userError || !user) throw new Error('Invalid Token');
+        if (userError || !user) throw new Error('Invalid Token: ' + (userError?.message || 'No User'));
 
         // 2. Check if content already exists for today (prevent race conditions)
         const today = new Date().toISOString().split('T')[0];
@@ -55,27 +59,37 @@ Deno.serve(async (req) => {
         const bible = profile?.preferred_bible_version || 'KJV';
 
         // 4. Generate Content with Gemini
-        // We want JSON output.
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", generationConfig: { responseMimeType: "application/json" } });
+        let generatedData;
+        try {
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", generationConfig: { responseMimeType: "application/json" } });
 
-        const prompt = `
-        You are a spiritual mentor. Generate a 'Daily Rhema' for a believer.
-        
-        Context:
-        - Goals: ${goals}
-        - Struggles: ${struggles}
-        - Bible Version: ${bible}
-        
-        Output a JSON object with these exact keys:
-        - "scripture_ref": A formatted scripture reference (e.g., "John 3:16 (${bible})").
-        - "scripture_text": The actual text of the verse.
-        - "content": A short, 2-3 sentence encouraging word connecting the scripture to their goals/struggles.
-        - "prayer_focus": A 1-sentence prayer declaration.
-        `;
+            const prompt = `
+            You are a spiritual mentor. Generate a 'Daily Rhema' for a believer.
+            
+            Context:
+            - Goals: ${goals}
+            - Struggles: ${struggles}
+            - Bible Version: ${bible}
+            
+            Output a JSON object with these exact keys:
+            - "scripture_ref": A formatted scripture reference (e.g., "John 3:16 (${bible})").
+            - "scripture_text": The actual text of the verse.
+            - "content": A short, 2-3 sentence encouraging word connecting the scripture to their goals/struggles.
+            - "prayer_focus": A 1-sentence prayer declaration.
+            `;
 
-        const result = await model.generateContent(prompt);
-        const responseText = result.response.text();
-        const generatedData = JSON.parse(responseText);
+            const result = await model.generateContent(prompt);
+            const responseText = result.response.text();
+
+            try {
+                generatedData = JSON.parse(responseText);
+            } catch (jsonErr) {
+                console.error("JSON Parse Error:", responseText);
+                throw new Error("Failed to parse AI response: " + responseText.substring(0, 100));
+            }
+        } catch (aiErr: any) {
+            throw new Error("Gemini AI Error: " + aiErr.message);
+        }
 
         // 5. Insert into DB
         const { data: inserted, error: insertError } = await supabase
@@ -91,14 +105,14 @@ Deno.serve(async (req) => {
             .select() // Return the inserted row
             .single();
 
-        if (insertError) throw insertError;
+        if (insertError) throw new Error("DB Insert Error: " + insertError.message);
 
         return new Response(JSON.stringify(inserted), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
 
-    } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), {
+    } catch (error: any) {
+        return new Response(JSON.stringify({ error: error.message, stack: error.stack }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             status: 500,
         });

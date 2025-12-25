@@ -18,6 +18,8 @@ export function AuthForm() {
     const router = useRouter();
     const { signInWithDemo } = useAuth();
 
+    const [checkEmail, setCheckEmail] = useState(false);
+
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
@@ -39,6 +41,8 @@ export function AuthForm() {
                     password,
                 });
                 if (error) throw error;
+                // SUCCESS: Show Check Email Screen
+                setCheckEmail(true);
             } else {
                 const { error } = await supabase.auth.signInWithPassword({
                     email,
@@ -53,6 +57,39 @@ export function AuthForm() {
             setLoading(false);
         }
     };
+
+    if (checkEmail) {
+        return (
+            <div className="w-full max-w-sm space-y-6 text-center animate-in fade-in zoom-in duration-500">
+                <div className="space-y-2">
+                    <h1 className="font-serif text-3xl font-medium tracking-tight text-[#D4AF37]">
+                        Check Your Email
+                    </h1>
+                    <p className="text-sm text-muted-foreground">
+                        We have sent a verification link to <span className="text-white font-medium">{email}</span>.
+                    </p>
+                </div>
+                <div className="p-6 bg-muted/30 rounded-lg border border-border/50">
+                    <p className="text-xs text-muted-foreground mb-4">
+                        Please click the link in the email to activate your sanctuary access.
+                    </p>
+                    <div className="text-xs text-primary/70 italic">
+                        For everyone who asks receives; the one who seeks finds...
+                    </div>
+                </div>
+                <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                        setCheckEmail(false);
+                        setIsSignUp(false); // Switch to Sign In mode
+                    }}
+                >
+                    Return to Sign In
+                </Button>
+            </div>
+        );
+    }
 
     return (
         <div className="w-full max-w-sm space-y-6">

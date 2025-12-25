@@ -52,47 +52,50 @@ export function SpiritualCalibrationForm() {
 
     const handleComplete = async () => {
         setIsLoading(true);
-        // Save to Supabase
-
-        if (!supabase) {
-            toast.error("Supabase client not initialized.");
-            setIsLoading(false);
-            return;
-        }
-
-        const { data: { user } } = await supabase.auth.getUser();
 
         try {
-            if (!supabase) {
-                throw new Error("Supabase client not initialized.");
-            }
+            if (!supabase) throw new Error("Supabase client not initialized.");
 
             const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error("You must be logged in.");
 
-            if (!user) {
-                throw new Error("You must be logged in.");
-            }
+            console.log("Starting calibration for user:", user.id);
 
-            const { error } = await supabase
+            // Create a timeout promise
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("Request timed out. Please check your connection.")), 10000)
+            );
+
+            // Perform Upsert (safer than update for new users)
+            const updatePromise = supabase
                 .from('profiles')
-                .update({
+                .upsert({
+                    id: user.id, // Required for upsert
                     spiritual_goals: goals,
                     struggles: struggles,
-                    favorite_ministers: ministers,
+                    favorite_ministers: ministers.split(',').map(s => s.trim()).filter(Boolean), // Ensure array
                     preferred_bible_version: bible,
                     has_completed_onboarding: true
-                })
-                .eq('id', user.id);
+                }, { onConflict: 'id' }); // Merge if exists
 
-            if (error) throw error;
+            // Race against timeout
+            const { error }: any = await Promise.race([updatePromise, timeoutPromise]);
 
+            if (error) {
+                console.error("Supabase Error:", error);
+                throw error;
+            }
+
+            console.log("Calibration successful.");
             toast.success("Profile Calibrated!");
+
+            // Force reload to update context
             window.location.href = '/';
+
         } catch (error: any) {
             console.error("Error saving profile:", error);
-            toast.error("Failed to save profile. " + (error.message || "Please try again."));
-        } finally {
-            setIsLoading(false);
+            toast.error(error.message || "Failed to save profile.");
+            setIsLoading(false); // Only stop loading on error, otherwise we want it to persist during redirect
         }
     };
 
