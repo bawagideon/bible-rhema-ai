@@ -37,15 +37,22 @@ Deno.serve(async (req) => {
         let userProfile = null;
 
         if (authHeader) {
-            const { data: { user }, error: userError } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
+            try {
+                // Manually decode Clerk JWT to get 'sub' (User ID)
+                const token = authHeader.replace('Bearer ', '');
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                const userId = payload.sub;
 
-            if (user) {
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('spiritual_goals, struggles, favorite_ministers, preferred_bible_version, denominational_bias')
-                    .eq('id', user.id)
-                    .single();
-                userProfile = profile;
+                if (userId) {
+                    const { data: profile } = await supabase
+                        .from('profiles')
+                        .select('spiritual_goals, struggles, favorite_ministers, preferred_bible_version, denominational_bias')
+                        .eq('id', userId)
+                        .single();
+                    userProfile = profile;
+                }
+            } catch (e) {
+                console.error("Context auth error (Guest Mode):", e);
             }
         }
 

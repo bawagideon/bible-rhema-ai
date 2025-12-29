@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
     Library,
     MessageCircle,
@@ -13,7 +13,9 @@ import {
     PanelRightOpen,
     ChevronLeft,
     ChevronRight,
-    Menu
+    Menu,
+    Settings,
+    LogOut
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -24,14 +26,14 @@ import { cn } from "@/lib/utils";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { RightPanel } from "@/components/layout/right-panel";
 import { useRhema } from "@/lib/store/rhema-context";
-import { useAuth } from "@/lib/store/auth-context";
+import { useAuth, useUser, useClerk } from "@clerk/nextjs";
+import { createClerkSupabaseClient } from "@/lib/supabaseClient";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Settings, LogOut } from "lucide-react";
 
 interface ShellLayoutProps {
     children: React.ReactNode;
@@ -40,9 +42,57 @@ interface ShellLayoutProps {
 export function ShellLayout({ children }: ShellLayoutProps) {
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const pathname = usePathname();
-    const { user } = useFeatureAccess();
-    const { isRightPanelOpen, toggleRightPanel } = useRhema();
-    const { signOut } = useAuth();
+    const router = useRouter();
+    const { user: featureUser } = useFeatureAccess();
+    const { isRightPanelOpen, toggleRightPanel, userName, userRole } = useRhema();
+
+    // Clerk Hooks
+    const { getToken } = useAuth();
+    const { user } = useUser();
+    const { signOut } = useClerk();
+
+    // "Self-Healing" Profile Sync for Localhost
+    useEffect(() => {
+        const syncProfile = async () => {
+            if (!user) return;
+
+            const token = await getToken({ template: 'supabase' });
+            if (!token) return;
+            const supabase = createClerkSupabaseClient(token);
+
+            // 1. Check if profile exists
+            const { data: profile, error } = await supabase
+                .from('profiles')
+                .select('id, has_completed_onboarding')
+                .eq('id', user.id)
+                .single();
+
+            // Refined Logic for Profile Check & Creation
+            let currentProfile = profile;
+
+            if (!profile) {
+                console.log("Creating missing profile for localhost...");
+                const { data: newProfile, error: insertError } = await supabase.from('profiles').insert({
+                    id: user.id,
+                    email: user.primaryEmailAddress?.emailAddress,
+                    full_name: user.fullName,
+                    tier: 'GUEST',
+                    has_completed_onboarding: false
+                }).select().single();
+
+                if (newProfile) currentProfile = newProfile;
+            }
+
+            // 3. Onboarding Check
+            // Prevent redirect loop if already on /onboarding
+            if (currentProfile && !currentProfile.has_completed_onboarding && pathname !== '/onboarding') {
+                console.log("Redirecting to Onboarding...");
+                router.push('/onboarding');
+            }
+        };
+
+        syncProfile();
+    }, [user, getToken, pathname, router]);
 
     const navItems = [
         { name: "Home", href: "/", icon: Home },
@@ -112,12 +162,12 @@ export function ShellLayout({ children }: ShellLayoutProps) {
                         <DropdownMenuTrigger asChild>
                             <div className={cn("flex items-center gap-3 cursor-pointer hover:bg-muted/50 p-2 rounded-md transition-colors", isSidebarCollapsed && "justify-center")}>
                                 <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-xs ring-1 ring-primary/40 text-transform uppercase">
-                                    {user.name.charAt(0)}
+                                    {(userName || 'B').charAt(0)}
                                 </div>
                                 {!isSidebarCollapsed && (
                                     <div className="flex flex-col overflow-hidden text-left">
-                                        <span className="text-sm font-medium truncate">{user.name}</span>
-                                        <span className="text-xs text-muted-foreground truncate">{user.role} Plan</span>
+                                        <span className="text-sm font-medium truncate">{userName}</span>
+                                        <span className="text-xs text-muted-foreground truncate">{userRole || 'GUEST'} Plan</span>
                                     </div>
                                 )}
                             </div>

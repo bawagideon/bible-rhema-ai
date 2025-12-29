@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { supabase } from "@/lib/supabaseClient";
+import { useAuth, useUser } from "@clerk/nextjs";
+import { createClerkSupabaseClient } from "@/lib/supabaseClient";
 
 // OPTIONS
 const SPIRITUAL_GOALS = [
@@ -33,6 +34,9 @@ const BIBLES = ["KJV", "NKJV", "ESV", "NASB", "NLT", "MSG"];
 
 export function SpiritualCalibrationForm() {
     const router = useRouter();
+    const { getToken } = useAuth();
+    const { user } = useUser();
+
     const [step, setStep] = useState(1);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -54,16 +58,18 @@ export function SpiritualCalibrationForm() {
         setIsLoading(true);
 
         try {
-            if (!supabase) throw new Error("Supabase client not initialized.");
-
-            const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error("You must be logged in.");
+
+            const token = await getToken({ template: 'supabase' });
+            if (!token) throw new Error("Failed to retrieve auth token.");
+
+            const supabase = createClerkSupabaseClient(token);
 
             console.log("Starting calibration for user:", user.id);
 
-            // Create a timeout promise
+            // Create a timeout promise to prevent hanging
             const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error("Request timed out. Please check your connection.")), 10000)
+                setTimeout(() => reject(new Error("Request timed out. Please check your connection.")), 15000)
             );
 
             // Perform Upsert (safer than update for new users)
@@ -89,7 +95,7 @@ export function SpiritualCalibrationForm() {
             console.log("Calibration successful.");
             toast.success("Profile Calibrated!");
 
-            // Force reload to update context
+            // Force reload to update context and trigger redirection to dashboard
             window.location.href = '/';
 
         } catch (error: any) {

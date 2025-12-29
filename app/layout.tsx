@@ -3,7 +3,7 @@ import { Inter, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { RhemaProvider } from "@/lib/store/rhema-context";
-import { AuthProvider } from "@/lib/store/auth-context";
+import { ClerkProvider } from '@clerk/nextjs';
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const playfair = Playfair_Display({
@@ -22,18 +22,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
-      <body className={cn(
-        "min-h-screen bg-background font-sans antialiased selection:bg-primary/20",
-        inter.variable,
-        playfair.variable
-      )}>
-        <AuthProvider>
+    <ClerkProvider signInFallbackRedirectUrl="/" signUpFallbackRedirectUrl="/">
+      <html lang="en" className="dark" suppressHydrationWarning>
+        <body className={cn(
+          "min-h-screen bg-background font-sans antialiased selection:bg-primary/20",
+          inter.variable,
+          playfair.variable
+        )}>
           <RhemaProvider>
             {children}
           </RhemaProvider>
-        </AuthProvider>
-      </body>
-    </html>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }

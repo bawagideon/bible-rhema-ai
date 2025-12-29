@@ -25,12 +25,17 @@ Deno.serve(async (req) => {
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
         const genAI = new GoogleGenerativeAI(googleApiKey);
 
-        // 1. Get User from Auth Header
+        // 1. Get User from Clerk JWT
         const authHeader = req.headers.get('Authorization');
         if (!authHeader) throw new Error('Missing Authorization Header');
 
-        const { data: { user }, error: userError } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
-        if (userError || !user) throw new Error('Invalid Token: ' + (userError?.message || 'No User'));
+        // Decode Clerk Token manually (since supabase.auth.getUser() relies on auth.users which is empty)
+        const token = authHeader.replace('Bearer ', '');
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        const userId = payload.sub;
+
+        if (!userId) throw new Error('Invalid Token: No sub claim');
+        const user = { id: userId }; // Mock user object for compatibility
 
         // 2. Check if content already exists for today (prevent race conditions)
         const today = new Date().toISOString().split('T')[0];
@@ -92,16 +97,17 @@ Deno.serve(async (req) => {
         }
 
         // 5. Insert into DB
+        // 5. Upsert into DB (Prevent race conditions)
         const { data: inserted, error: insertError } = await supabase
             .from('daily_rhema')
-            .insert({
+            .upsert({
                 user_id: user.id,
                 date: today,
                 scripture_ref: generatedData.scripture_ref,
                 scripture_text: generatedData.scripture_text,
                 content: generatedData.content,
                 prayer_focus: generatedData.prayer_focus
-            })
+            }, { onConflict: 'user_id, date' })
             .select() // Return the inserted row
             .single();
 

@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { Sparkles, Calendar, RefreshCw } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+import { useAuth } from '@clerk/nextjs';
+// Replaced legacy supabase import
+import { createClerkSupabaseClient } from "@/lib/supabaseClient";
 import { useRhema } from "@/lib/store/rhema-context";
 import { toast } from "sonner";
 
@@ -25,6 +27,9 @@ interface DailyRhemaCardProps {
 
 export function DailyRhemaCard({ className, initialData }: DailyRhemaCardProps) {
     const { userTier } = useRhema();
+    const { getToken } = useAuth();
+    // const supabase = useClerkSupabaseClient(); // Removed
+
     const [data, setData] = useState<DailyRhema | null>(initialData || null);
     const [loading, setLoading] = useState(!initialData);
     const [generating, setGenerating] = useState(false);
@@ -38,14 +43,16 @@ export function DailyRhemaCard({ className, initialData }: DailyRhemaCardProps) 
     }, [initialData]);
 
     const checkDailyRhema = async () => {
-        if (!supabase) {
-            toast.error("Supabase client not initialized");
-            setLoading(false);
-            return;
-        }
-
         try {
             setLoading(true);
+            const token = await getToken({ template: 'supabase' });
+            if (!token) {
+                // If not logged in, maybe show generic or return
+                setLoading(false);
+                return;
+            }
+            const supabase = createClerkSupabaseClient(token);
+
             const today = new Date().toISOString().split('T')[0];
             const { data: existing, error } = await supabase
                 .from('daily_rhema')
@@ -56,7 +63,7 @@ export function DailyRhemaCard({ className, initialData }: DailyRhemaCardProps) 
             if (existing) {
                 setData(existing);
             } else {
-                await generateRhema();
+                await generateRhema(token); // Pass token to avoid re-fetching
             }
         } catch (error) {
             console.error("Error fetching daily rhema:", error);
@@ -65,11 +72,21 @@ export function DailyRhemaCard({ className, initialData }: DailyRhemaCardProps) 
         }
     };
 
-    const generateRhema = async () => {
-        if (!supabase) return;
-
+    const generateRhema = async (existingToken?: string) => {
         try {
             setGenerating(true);
+            let token = existingToken;
+            if (!token) {
+                token = await getToken({ template: 'supabase' }) || undefined;
+            }
+
+            if (!token) {
+                toast.error("Authentication required");
+                return;
+            }
+
+            const supabase = createClerkSupabaseClient(token);
+
             const { data: newData, error } = await supabase.functions.invoke('generate-daily-rhema');
 
             if (error) throw error;
@@ -161,7 +178,7 @@ export function DailyRhemaCard({ className, initialData }: DailyRhemaCardProps) 
                         <Button
                             variant="ghost"
                             size="icon"
-                            onClick={generateRhema}
+                            onClick={() => generateRhema()}
                             disabled={generating}
                             className={cn("text-muted-foreground hover:text-primary", generating && "animate-spin")}
                             title="Request New Manna (Minister Only)"
