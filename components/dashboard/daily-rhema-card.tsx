@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -170,9 +171,11 @@ export function DailyRhemaCard({ className, initialData }: DailyRhemaCardProps) 
                 </div>
 
                 <div className="pt-2 flex justify-between items-center">
-                    <Button className="bg-primary hover:bg-primary/90 text-black font-semibold min-w-[140px]">
-                        Meditate
-                    </Button>
+                    <Link href="/sanctuary">
+                        <Button className="bg-primary hover:bg-primary/90 text-black font-semibold min-w-[140px]">
+                            Meditate
+                        </Button>
+                    </Link>
 
                     {isMinister && (
                         <Button
