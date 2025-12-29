@@ -4,6 +4,7 @@ import "./globals.css";
 import { cn } from "@/lib/utils";
 import { RhemaProvider } from "@/lib/store/rhema-context";
 import { ClerkProvider } from '@clerk/nextjs';
+import { AudioProvider } from "@/lib/store/audio-context";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const playfair = Playfair_Display({
@@ -30,7 +31,9 @@ export default function RootLayout({
           playfair.variable
         )}>
           <RhemaProvider>
-            {children}
+            <AudioProvider>
+              {children}
+            </AudioProvider>
           </RhemaProvider>
         </body>
       </html>

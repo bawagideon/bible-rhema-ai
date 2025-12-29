@@ -1,67 +1,121 @@
 "use client";
 
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
+import { useState } from "react";
+import { motion } from "framer-motion";
+import { CheckCircle2, Circle, Trash2, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export interface PrayerItem {
+interface Prayer {
     id: string;
     title: string;
-    tag: string;
-    count: number;
-    isAnswered: boolean;
+    status: 'active' | 'answered' | 'archived';
+    ai_strategy?: string;
+    scripture_ref?: string;
+    created_at: string;
 }
 
 interface PrayerCardProps {
-    prayer: PrayerItem;
-    onToggleStatus: (id: string, isAnswered: boolean) => void;
+    prayer: Prayer;
+    onStatusChange: (id: string, newStatus: 'active' | 'answered') => void;
+    onDelete: (id: string) => void;
 }
 
-export function PrayerCard({ prayer, onToggleStatus }: PrayerCardProps) {
+export function PrayerCard({ prayer, onStatusChange, onDelete }: PrayerCardProps) {
+    const [isExpanded, setIsExpanded] = useState(false);
+
     return (
-        <Card
+        <motion.div
+            layout
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95 }}
             className={cn(
-                "p-4 border transition-all duration-300 group",
-                prayer.isAnswered
-                    ? "bg-primary/5 border-primary/30"
-                    : "bg-card border-border hover:border-primary/30"
+                "group relative overflow-hidden rounded-lg border bg-card/50 backdrop-blur-sm transition-all hover:bg-card/80",
+                prayer.status === 'answered' ? "border-[#D4AF37]/50 bg-[#D4AF37]/5" : "border-border"
             )}
         >
-            <div className="flex items-start gap-4">
-                <Checkbox
-                    id={`prayer-${prayer.id}`}
-                    checked={prayer.isAnswered}
-                    onCheckedChange={(checked) => onToggleStatus(prayer.id, checked as boolean)}
-                    className="mt-1 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground border-muted-foreground/50"
-                />
-
-                <div className="flex-1 space-y-1">
-                    <div className="flex items-center justify-between">
-                        <label
-                            htmlFor={`prayer-${prayer.id}`}
-                            className={cn(
-                                "font-medium leading-none cursor-pointer transition-all",
-                                prayer.isAnswered ? "text-muted-foreground line-through decoration-primary/50" : "text-foreground"
-                            )}
-                        >
-                            {prayer.title}
-                        </label>
-                        {prayer.isAnswered && (
-                            <span className="text-[10px] text-primary font-bold uppercase tracking-wider">Answered</span>
+            <div className="p-4">
+                <div className="flex items-start gap-3">
+                    {/* Status Toggle */}
+                    <button
+                        onClick={() => onStatusChange(prayer.id, prayer.status === 'active' ? 'answered' : 'active')}
+                        className={cn(
+                            "mt-1 flex-shrink-0 transition-colors",
+                            prayer.status === 'answered' ? "text-[#D4AF37]" : "text-muted-foreground hover:text-primary"
                         )}
+                    >
+                        {prayer.status === 'answered' ? <CheckCircle2 className="h-5 w-5" /> : <Circle className="h-5 w-5" />}
+                    </button>
+
+                    <div className="flex-1 min-w-0">
+                        {/* Title */}
+                        <div
+                            className="cursor-pointer"
+                            onClick={() => setIsExpanded(!isExpanded)}
+                        >
+                            <h3 className={cn(
+                                "font-medium leading-none tracking-tight text-foreground transition-all",
+                                prayer.status === 'answered' && "line-through text-muted-foreground"
+                            )}>
+                                {prayer.title}
+                            </h3>
+                            <p className="text-xs text-muted-foreground mt-1.5">
+                                {formatDistanceToNow(new Date(prayer.created_at), { addSuffix: true })}
+                            </p>
+                        </div>
                     </div>
 
-                    <div className="flex items-center gap-2 pt-1">
-                        <Badge variant="secondary" className="text-[10px] font-normal px-1.5 h-5">
-                            {prayer.tag}
-                        </Badge>
-                        <span className="text-[10px] text-muted-foreground">
-                            Prayed {prayer.count} times
-                        </span>
-                    </div>
+                    {/* Expand Toggle */}
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" onClick={() => setIsExpanded(!isExpanded)}>
+                        {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </Button>
                 </div>
+
+                {/* Expanded Content (AI Strategy) */}
+                {isExpanded && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="mt-4 pt-4 border-t border-border/50 text-sm"
+                    >
+                        {prayer.ai_strategy ? (
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-2 text-xs font-bold text-[#D4AF37] uppercase tracking-wider">
+                                    <Sparkles className="h-3 w-3" />
+                                    Divine Strategy
+                                </div>
+                                <p className="text-muted-foreground leading-relaxed">
+                                    {prayer.ai_strategy}
+                                </p>
+                                {prayer.scripture_ref && (
+                                    <div className="bg-primary/10 border border-primary/20 rounded-md p-3 text-primary text-xs font-serif italic">
+                                        "{prayer.scripture_ref}"
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="text-center py-4 text-muted-foreground/50 text-xs italic">
+                                Seeking divine strategy...
+                            </div>
+                        )}
+
+                        <div className="mt-4 flex justify-end">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => onDelete(prayer.id)}
+                                className="text-red-500 hover:text-red-400 hover:bg-red-500/10 h-8 px-2 text-xs"
+                            >
+                                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                                Archive
+                            </Button>
+                        </div>
+                    </motion.div>
+                )}
             </div>
-        </Card>
+        </motion.div>
     );
 }

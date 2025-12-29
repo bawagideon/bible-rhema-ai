@@ -6,8 +6,6 @@ import { usePathname, useRouter } from "next/navigation";
 import {
     Library,
     MessageCircle,
-    Mic,
-    Palette,
     Home,
     PanelRightClose,
     PanelRightOpen,
@@ -15,7 +13,10 @@ import {
     ChevronRight,
     Menu,
     Settings,
-    LogOut
+    LogOut,
+    Flame,
+    Wind,
+    Palette
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { GlobalAudioPlayer } from "@/components/layout/global-audio-player";
 
 interface ShellLayoutProps {
     children: React.ReactNode;
@@ -61,7 +63,7 @@ export function ShellLayout({ children }: ShellLayoutProps) {
             const supabase = createClerkSupabaseClient(token);
 
             // 1. Check if profile exists
-            const { data: profile, error } = await supabase
+            const { data: profile } = await supabase
                 .from('profiles')
                 .select('id, has_completed_onboarding')
                 .eq('id', user.id)
@@ -97,13 +99,14 @@ export function ShellLayout({ children }: ShellLayoutProps) {
     const navItems = [
         { name: "Home", href: "/", icon: Home },
         { name: "SpiritOS", href: "/spirit-os", icon: MessageCircle },
-        { name: "Altar", href: "/altar", icon: Mic },
+        { name: "War Room", href: "/altar", icon: Flame },
+        { name: "Sanctuary", href: "/sanctuary", icon: Wind },
         { name: "Studio", href: "/studio", icon: Palette },
         { name: "Library", href: "/library", icon: Library },
     ];
 
     return (
-        <div className="flex h-screen bg-background overflow-hidden">
+        <div className="flex h-screen bg-background overflow-hidden relative">
             {/* LEFT SIDEBAR (Desktop) */}
             <aside
                 className={cn(
@@ -243,6 +246,9 @@ export function ShellLayout({ children }: ShellLayoutProps) {
                     {children}
                 </div>
             </main>
+
+            {/* GLOBAL AUDIO PLAYER (Fixed Position) */}
+            <GlobalAudioPlayer />
 
             {/* RIGHT PANEL (Divine Context) */}
             <RightPanel />
