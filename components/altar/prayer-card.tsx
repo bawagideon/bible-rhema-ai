@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import { motion } from "framer-motion";
-import { CheckCircle2, Circle, Trash2, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
+import { CheckCircle2, Circle, Trash2, Maximize2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+// Types matching PrayerWall
 interface Prayer {
     id: string;
     title: string;
@@ -20,101 +20,74 @@ interface PrayerCardProps {
     prayer: Prayer;
     onStatusChange: (id: string, newStatus: 'active' | 'answered') => void;
     onDelete: (id: string) => void;
+    onClick: () => void;
 }
 
-export function PrayerCard({ prayer, onStatusChange, onDelete }: PrayerCardProps) {
-    const [isExpanded, setIsExpanded] = useState(false);
-
+export function PrayerCard({ prayer, onStatusChange, onDelete, onClick }: PrayerCardProps) {
     return (
         <motion.div
             layout
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95 }}
+            whileHover={{ y: -4, transition: { duration: 0.2 } }}
             className={cn(
-                "group relative overflow-hidden rounded-lg border bg-card/50 backdrop-blur-sm transition-all hover:bg-card/80",
-                prayer.status === 'answered' ? "border-[#D4AF37]/50 bg-[#D4AF37]/5" : "border-border"
+                "group relative overflow-hidden rounded-xl border bg-card/60 backdrop-blur-xl transition-all shadow-sm hover:shadow-md cursor-pointer h-full flex flex-col justify-between",
+                prayer.status === 'answered' ? "border-[#D4AF37]/50 bg-[#D4AF37]/5" : "border-border/60"
             )}
+            onClick={onClick}
         >
-            <div className="p-4">
-                <div className="flex items-start gap-3">
-                    {/* Status Toggle */}
+            <div className="p-5 flex-1">
+                <div className="flex items-start justify-between gap-3 mb-2">
+                    {/* Status Utility (Stop Propagation to avoid opening modal) */}
                     <button
-                        onClick={() => onStatusChange(prayer.id, prayer.status === 'active' ? 'answered' : 'active')}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onStatusChange(prayer.id, prayer.status === 'active' ? 'answered' : 'active');
+                        }}
                         className={cn(
-                            "mt-1 flex-shrink-0 transition-colors",
+                            "transition-colors",
                             prayer.status === 'answered' ? "text-[#D4AF37]" : "text-muted-foreground hover:text-primary"
                         )}
+                        title={prayer.status === 'active' ? "Mark Answered" : "Mark Active"}
                     >
                         {prayer.status === 'answered' ? <CheckCircle2 className="h-5 w-5" /> : <Circle className="h-5 w-5" />}
                     </button>
 
-                    <div className="flex-1 min-w-0">
-                        {/* Title */}
-                        <div
-                            className="cursor-pointer"
-                            onClick={() => setIsExpanded(!isExpanded)}
-                        >
-                            <h3 className={cn(
-                                "font-medium leading-none tracking-tight text-foreground transition-all",
-                                prayer.status === 'answered' && "line-through text-muted-foreground"
-                            )}>
-                                {prayer.title}
-                            </h3>
-                            <p className="text-xs text-muted-foreground mt-1.5">
-                                {formatDistanceToNow(new Date(prayer.created_at), { addSuffix: true })}
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Expand Toggle */}
-                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" onClick={() => setIsExpanded(!isExpanded)}>
-                        {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onDelete(prayer.id);
+                        }}
+                    >
+                        <Trash2 className="h-3.5 w-3.5 hover:text-red-500" />
                     </Button>
                 </div>
 
-                {/* Expanded Content (AI Strategy) */}
-                {isExpanded && (
-                    <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="mt-4 pt-4 border-t border-border/50 text-sm"
-                    >
-                        {prayer.ai_strategy ? (
-                            <div className="space-y-3">
-                                <div className="flex items-center gap-2 text-xs font-bold text-[#D4AF37] uppercase tracking-wider">
-                                    <Sparkles className="h-3 w-3" />
-                                    Divine Strategy
-                                </div>
-                                <p className="text-muted-foreground leading-relaxed">
-                                    {prayer.ai_strategy}
-                                </p>
-                                {prayer.scripture_ref && (
-                                    <div className="bg-primary/10 border border-primary/20 rounded-md p-3 text-primary text-xs font-serif italic">
-                                        "{prayer.scripture_ref}"
-                                    </div>
-                                )}
-                            </div>
-                        ) : (
-                            <div className="text-center py-4 text-muted-foreground/50 text-xs italic">
-                                Seeking divine strategy...
-                            </div>
-                        )}
+                <div className="space-y-3">
+                    <h3 className={cn(
+                        "font-medium text-lg leading-snug text-foreground transition-all line-clamp-3",
+                        prayer.status === 'answered' && "line-through text-muted-foreground"
+                    )}>
+                        {prayer.title}
+                    </h3>
 
-                        <div className="mt-4 flex justify-end">
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => onDelete(prayer.id)}
-                                className="text-red-500 hover:text-red-400 hover:bg-red-500/10 h-8 px-2 text-xs"
-                            >
-                                <Trash2 className="h-3.5 w-3.5 mr-1" />
-                                Archive
-                            </Button>
+                    {prayer.scripture_ref && (
+                        <div className="inline-block px-2 py-1 bg-primary/5 rounded md:text-xs text-[10px] font-serif italic text-primary/80">
+                            {prayer.scripture_ref}
                         </div>
-                    </motion.div>
-                )}
+                    )}
+                </div>
+            </div>
+
+            <div className="p-4 border-t border-border/40 bg-muted/20 flex items-center justify-between text-xs text-muted-foreground">
+                <span>{formatDistanceToNow(new Date(prayer.created_at), { addSuffix: true })}</span>
+                <div className="flex items-center gap-1 group-hover:text-primary transition-colors">
+                    <Maximize2 className="w-3 h-3" />
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity">Focus</span>
+                </div>
             </div>
         </motion.div>
     );

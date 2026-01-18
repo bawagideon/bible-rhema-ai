@@ -16,7 +16,13 @@ const SCRIPTURE_MAP: Record<string, { ref: string, text: string }> = {
 
 const DEFAULT_SCRIPTURE = { ref: "Psalm 46:10", text: "Be still, and know that I am God." };
 
-export function ScriptureSoak() {
+interface ScriptureSoakProps {
+    mode?: string;
+}
+
+export function ScriptureSoak({ mode = 'default' }: ScriptureSoakProps) {
+    // Ideally we filter SCRIPTURES based on mode here
+    const [currentScripture, setCurrentScripture] = useState(Object.values(SCRIPTURE_MAP)[0]); // Adjusted to use SCRIPTURE_MAP
     const { getToken, userId } = useAuth();
     const [scripture, setScripture] = useState(DEFAULT_SCRIPTURE);
     const [isVisible, setIsVisible] = useState(false);

@@ -2,9 +2,26 @@
 
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
+import { cn } from "@/lib/utils";
 
-export function BreathingOrb() {
+interface BreathingOrbProps {
+    mode?: string;
+    autoStart?: boolean;
+}
+
+const MODE_CONFIG: Record<string, { inhale: string, exhale: string, color: string }> = {
+    anxious: { inhale: "Inhale Peace", exhale: "Release Fear", color: "from-blue-400 to-blue-600" },
+    overwhelmed: { inhale: "Inhale Strength", exhale: "Release Burden", color: "from-teal-400 to-teal-600" },
+    anger: { inhale: "Inhale Patience", exhale: "Release Rage", color: "from-red-400 to-red-600" },
+    sad: { inhale: "Inhale Comfort", exhale: "Release Grief", color: "from-indigo-400 to-indigo-600" },
+    default: { inhale: "Inhale Grace", exhale: "Release Worry", color: "from-[#D4AF37] to-[#8A6E24]" }
+};
+
+export function BreathingOrb({ mode = 'default', autoStart = false }: BreathingOrbProps) {
     const [breathPhase, setBreathPhase] = useState<"inhale" | "hold" | "exhale">("inhale");
+
+    // Config based on mode
+    const config = MODE_CONFIG[mode] || MODE_CONFIG['default'];
 
     useEffect(() => {
         const breathe = async () => {
@@ -18,7 +35,7 @@ export function BreathingOrb() {
                 setBreathPhase("exhale");
                 await new Promise(r => setTimeout(r, 4000));
 
-                // Small pause before next cycle
+                // Small pause
                 await new Promise(r => setTimeout(r, 1000));
             }
         };
@@ -31,12 +48,6 @@ export function BreathingOrb() {
         exhale: { scale: 1, opacity: 0.5, filter: "brightness(1)" }
     };
 
-    const textVariants = {
-        inhale: { opacity: 1, y: 0 },
-        hold: { opacity: 1, y: 0 },
-        exhale: { opacity: 0, y: 10 }
-    };
-
     return (
         <div className="flex flex-col items-center justify-center h-full relative z-10">
             {/* The Orb */}
@@ -46,13 +57,13 @@ export function BreathingOrb() {
                     animate={breathPhase}
                     variants={variants}
                     transition={{ duration: breathPhase === 'hold' ? 2 : 4, ease: "easeInOut" }}
-                    className="absolute w-48 h-48 rounded-full bg-primary/20 blur-3xl"
+                    className={cn("absolute w-48 h-48 rounded-full blur-3xl opacity-30", config.color.split(' ')[1].replace('to-', 'bg-'))}
                 />
                 <motion.div
                     animate={breathPhase}
                     variants={variants}
                     transition={{ duration: breathPhase === 'hold' ? 2 : 4, ease: "easeInOut" }}
-                    className="absolute w-32 h-32 rounded-full bg-[#D4AF37]/30 blur-2xl"
+                    className={cn("absolute w-32 h-32 rounded-full blur-2xl opacity-40", config.color.split(' ')[1].replace('to-', 'bg-'))}
                 />
 
                 {/* Core */}
@@ -60,22 +71,25 @@ export function BreathingOrb() {
                     animate={breathPhase}
                     variants={variants}
                     transition={{ duration: breathPhase === 'hold' ? 2 : 4, ease: "easeInOut" }}
-                    className="w-24 h-24 rounded-full bg-gradient-to-br from-[#D4AF37] to-[#8A6E24] shadow-[0_0_50px_rgba(212,175,55,0.4)] border border-[#D4AF37]/50"
+                    className={cn(
+                        "w-24 h-24 rounded-full bg-gradient-to-br shadow-[0_0_50px_rgba(255,255,255,0.2)] border border-white/10",
+                        config.color
+                    )}
                 />
             </div>
 
             {/* Instruction Text */}
             <div className="mt-12 h-8 text-center">
                 <motion.span
-                    key={breathPhase}
+                    key={`${breathPhase}-${mode}`}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
                     className="text-lg font-serif text-muted-foreground tracking-widest uppercase"
                 >
-                    {breathPhase === 'inhale' && "Inhale Grace"}
+                    {breathPhase === 'inhale' && config.inhale}
                     {breathPhase === 'hold' && "Be Still"}
-                    {breathPhase === 'exhale' && "Release Worry"}
+                    {breathPhase === 'exhale' && config.exhale}
                 </motion.span>
             </div>
 

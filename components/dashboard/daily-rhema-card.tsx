@@ -133,12 +133,15 @@ export function DailyRhemaCard({ className, initialData }: DailyRhemaCardProps) 
     if (!data) return null;
 
     return (
-        <Card className={cn("relative overflow-hidden border-border/60 bg-gradient-to-br from-card to-card/50 transition-all duration-500", className)}>
+        <Card className={cn("relative overflow-hidden border-border/60 bg-gradient-to-br from-card to-card/50 transition-all duration-500",
+            heroMode ? "min-h-[400px] flex flex-col justify-center border-primary/20 shadow-xl shadow-primary/5" : "",
+            className
+        )}>
             {/* Decorative Gold Gradient Border Effect */}
             <div className="absolute inset-0 bg-gradient-to-r from-primary/20 via-transparent to-primary/5 opacity-50 pointer-events-none" />
             <div className="absolute top-0 left-0 w-1 h-full bg-primary/40" />
 
-            <CardContent className="p-6 md:p-8 relative z-10 flex flex-col gap-6">
+            <CardContent className="p-6 md:p-10 relative z-10 flex flex-col gap-6">
                 <div className="flex items-center justify-between text-muted-foreground text-sm uppercase tracking-widest">
                     <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4" />
@@ -146,36 +149,60 @@ export function DailyRhemaCard({ className, initialData }: DailyRhemaCardProps) 
                     </div>
                     <div className="flex items-center gap-1 text-primary/80">
                         <Sparkles className="w-3 h-3" />
-                        <span>Daily Rhema</span>
+                        <span>{heroMode ? "Morning Manna" : "Daily Rhema"}</span>
                     </div>
                 </div>
 
-                <div className="space-y-4">
-                    <blockquote className="font-serif text-2xl md:text-3xl leading-tight text-foreground border-l-4 border-primary/20 pl-6 italic">
-                        "{data.scripture_text}"
-                    </blockquote>
-                    <p className="text-right text-lg font-serif text-primary mt-2">— {data.scripture_ref}</p>
-                </div>
-
-                <div className="bg-muted/30 rounded-lg p-5 border border-border/50 backdrop-blur-sm">
-                    <p className="text-sm md:text-base text-muted-foreground leading-relaxed">
-                        <strong className="text-foreground/90 mr-1">Insight:</strong>
-                        {data.content}
-                    </p>
-                    <div className="mt-4 pt-4 border-t border-border/40">
-                        <p className="text-sm text-primary/90 italic">
-                            <span className="font-semibold not-italic text-muted-foreground mr-1">Prayer:</span>
-                            {data.prayer_focus}
+                <div className="space-y-6">
+                    <div className="space-y-2">
+                        <blockquote className={cn(
+                            "font-serif leading-tight text-foreground border-l-4 border-primary/20 pl-6 italic transition-all",
+                            heroMode ? "text-3xl md:text-5xl" : "text-2xl md:text-3xl"
+                        )}>
+                            "{data.scripture_text}"
+                        </blockquote>
+                        <p className="text-right text-lg font-serif text-primary mt-2 flex items-center justify-end gap-2">
+                            <span className="w-8 h-[1px] bg-primary/50" />
+                            {data.scripture_ref}
                         </p>
                     </div>
+
+                    {heroMode && (
+                        <p className="text-xl text-muted-foreground font-light max-w-2xl leading-relaxed">
+                            {data.content}
+                        </p>
+                    )}
                 </div>
 
-                <div className="pt-2 flex justify-between items-center">
-                    <Link href="/sanctuary">
-                        <Button className="bg-primary hover:bg-primary/90 text-black font-semibold min-w-[140px]">
-                            Meditate
-                        </Button>
-                    </Link>
+                {!heroMode && (
+                    <div className="bg-muted/30 rounded-lg p-5 border border-border/50 backdrop-blur-sm">
+                        <p className="text-sm md:text-base text-muted-foreground leading-relaxed">
+                            <strong className="text-foreground/90 mr-1">Insight:</strong>
+                            {data.content}
+                        </p>
+                        <div className="mt-4 pt-4 border-t border-border/40">
+                            <p className="text-sm text-primary/90 italic">
+                                <span className="font-semibold not-italic text-muted-foreground mr-1">Prayer:</span>
+                                {data.prayer_focus}
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                <div className="pt-4 flex justify-between items-center">
+                    {heroMode ? (
+                        <Link href="/altar?mode=morning_prayer">
+                            <Button size="lg" className="bg-[#D4AF37] hover:bg-[#b5952f] text-black font-semibold min-w-[200px] h-14 text-lg shadow-lg shadow-[#D4AF37]/20">
+                                Start Morning Prayer
+                            </Button>
+                        </Link>
+                    ) : (
+                        <Link href="/sanctuary">
+                            <Button className="bg-primary hover:bg-primary/90 text-black font-semibold min-w-[140px]">
+                                Meditate
+                            </Button>
+                        </Link>
+                    )}
 
                     {isMinister && (
                         <Button

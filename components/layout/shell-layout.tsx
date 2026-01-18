@@ -105,13 +105,17 @@ export function ShellLayout({ children }: ShellLayoutProps) {
         { name: "Library", href: "/library", icon: Library },
     ];
 
+    // Immersive Mode Logic (Cinema Mode for Sanctuary)
+    const isImmersive = pathname === '/sanctuary';
+
     return (
         <div className="flex h-screen bg-background overflow-hidden relative">
             {/* LEFT SIDEBAR (Desktop) */}
             <aside
                 className={cn(
-                    "hidden md:flex flex-col border-r border-border transition-all duration-300 ease-in-out z-20 bg-card/50 backdrop-blur-sm",
-                    isSidebarCollapsed ? "w-[60px]" : "w-[240px]"
+                    "hidden md:flex flex-col border-r border-border transition-all duration-500 ease-in-out z-20 bg-card/50 backdrop-blur-sm fixed md:relative h-full",
+                    isSidebarCollapsed ? "w-[60px]" : "w-[240px]",
+                    isImmersive && "-ml-[240px] opacity-0 pointer-events-none" // Slide out
                 )}
             >
                 <div className={cn("h-14 flex items-center px-3 border-b border-border", isSidebarCollapsed ? "justify-center" : "justify-between")}>
@@ -190,7 +194,10 @@ export function ShellLayout({ children }: ShellLayoutProps) {
             </aside>
 
             {/* MOBILE HEADER */}
-            <div className="md:hidden fixed top-0 w-full h-14 border-b border-border bg-background flex items-center px-4 justify-between z-50">
+            <div className={cn(
+                "md:hidden fixed top-0 w-full h-14 border-b border-border bg-background flex items-center px-4 justify-between z-50 transition-all duration-500",
+                isImmersive && "-translate-y-full opacity-0"
+            )}>
                 <Sheet>
                     <SheetTrigger asChild>
                         <Button variant="ghost" size="icon">
@@ -223,9 +230,16 @@ export function ShellLayout({ children }: ShellLayoutProps) {
             </div>
 
             {/* MAIN CONTENT AREA */}
-            <main className="flex-1 flex flex-col relative h-full md:pt-0 pt-14 overflow-hidden">
+            <main className={cn(
+                "flex-1 flex flex-col relative h-full transition-all duration-500 overflow-hidden",
+                !isImmersive && "md:pt-0 pt-14", // Normal padding
+                isImmersive && "pt-0" // Full height in immersive
+            )}>
                 {/* Header/Utility Bar for Center Stage - Option to toggle right panel */}
-                <header className="h-14 border-b border-border/40 flex items-center justify-between px-6 bg-background/50 backdrop-blur-xl sticky top-0 z-10">
+                <header className={cn(
+                    "h-14 border-b border-border/40 flex items-center justify-between px-6 bg-background/50 backdrop-blur-xl sticky top-0 z-10 transition-transform duration-500",
+                    isImmersive && "-translate-y-full opacity-0 pointer-events-none"
+                )}>
                     <h1 className="font-serif text-lg font-medium text-foreground tracking-wide">
                         {navItems.find(i => i.href === pathname)?.name || 'Dashboard'}
                     </h1>
