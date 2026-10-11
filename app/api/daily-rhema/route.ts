@@ -25,13 +25,52 @@ const DAILY_BREAD_PRESETS = [
     }
 ];
 
+function getSupabaseServerClient() {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-url.supabase.co';
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+    return createClient(supabaseUrl, serviceRoleKey);
+}
+
 export async function GET() {
     try {
+        const { userId } = await auth();
         const today = new Date().toISOString().split('T')[0];
         const dayIndex = new Date().getDate() % DAILY_BREAD_PRESETS.length;
         const preset = DAILY_BREAD_PRESETS[dayIndex];
 
-        // Format return
+        if (userId) {
+            const supabase = getSupabaseServerClient();
+            const { data: storedRhema } = await supabase
+                .from('daily_rhema')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('date', today)
+                .maybeSingle();
+
+            if (storedRhema) {
+                return NextResponse.json({
+                    success: true,
+                    data: {
+                        date: new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+                        scripture_text: storedRhema.scripture_text,
+                        scripture_ref: storedRhema.scripture_ref,
+                        content: storedRhema.content,
+                        prayer_focus: storedRhema.prayer_focus || "Lord, grant me wisdom to walk in Your truth today."
+                    }
+                });
+            }
+
+            // Persist today's word for the user
+            await supabase.from('daily_rhema').insert({
+                user_id: userId,
+                date: today,
+                scripture_text: preset.scripture_text,
+                scripture_ref: preset.scripture_ref,
+                content: preset.content,
+                prayer_focus: preset.prayer_focus
+            }).select().maybeSingle();
+        }
+
         return NextResponse.json({
             success: true,
             data: {

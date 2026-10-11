@@ -26,12 +26,14 @@ export async function GET() {
             .order('created_at', { ascending: false });
 
         if (error) {
-            return NextResponse.json({ success: true, data: [] });
+            console.error("Error fetching saved studies:", error);
+            return NextResponse.json({ success: false, error: error.message }, { status: 500 });
         }
 
         return NextResponse.json({ success: true, data: data || [] });
     } catch (e: any) {
-        return NextResponse.json({ success: true, data: [] });
+        console.error("Error in GET /api/studies:", e);
+        return NextResponse.json({ success: false, error: e.message }, { status: 500 });
     }
 }
 

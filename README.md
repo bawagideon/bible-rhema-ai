@@ -29,25 +29,29 @@ flowchart TD
 
     subgraph BackendAPI["Backend API & AI Engine"]
         APISpirit["/api/spirit-os (Streaming LLM)"]
+        APIBible["/api/bible (API.Bible & Open Scripture)"]
         APIStudio["/api/studio/generate (Homiletics Engine)"]
         APIAssist["/api/studio/assist (Contextual AI)"]
         APIPrayers["/api/prayers (CRUD Intercession)"]
+        APIJournal["/api/journal (Spiritual Reflections)"]
         APISermons["/api/sermons (Manuscripts Vault)"]
-        APIBilling["/api/billing/verify (Subscriptions)"]
+        APIPaystack["/api/billing/paystack (Paystack Checkout)"]
     end
 
     subgraph External["Cloud & Foundation Services"]
-        Gemini["Google Gemini (1.5 Flash / 2.0 Flash)"]
+        Gemini["Google Gemini 3.8 Flash"]
+        APIBibleService["API.Bible / Open Scripture APIs"]
         Supabase["Supabase PostgreSQL (RLS Enforced)"]
-        PayPal["PayPal Subscriptions API"]
+        Paystack["Paystack Payments & Webhooks"]
     end
 
     NextApp --> Frontend
     Frontend --> Middleware --> Clerk
     Frontend --> BackendAPI
     BackendAPI --> Gemini
+    BackendAPI --> APIBibleService
     BackendAPI --> Supabase
-    Pricing --> APIBilling --> PayPal
+    Pricing --> APIPaystack --> Paystack
 ```
 
 ---

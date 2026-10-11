@@ -17,7 +17,7 @@ const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE
 
 async function cleanDatabase() {
   console.log("=== RESETTING DATABASE TO FRESH ZERO STATE ===");
-  const tables = ["user_stats", "prayers", "sermons", "daily_rhema", "profiles"];
+  const tables = ["journal_entries", "saved_studies", "user_stats", "prayers", "sermons", "daily_rhema", "profiles"];
   
   for (const table of tables) {
     const { error, count } = await supabase.from(table).delete().neq("id", "00000000-0000-0000-0000-000000000000");

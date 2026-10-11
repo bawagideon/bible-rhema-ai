@@ -13,8 +13,19 @@ const playfair = Playfair_Display({
 });
 
 export const metadata: Metadata = {
-  title: "RhemaAI - Divine Intelligence",
-  description: "The premium Christian AI ecosystem.",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://bible-rhema-ai.vercel.app"),
+  title: "BIBLE RHEMA AI — Scripture first. Always.",
+  description: "Where the Word comes alive. AI-grounded biblical study, theological exegesis, personal prayer sanctuary, and expository sermon studio.",
+  icons: {
+    icon: "/files/favicon.ico",
+    shortcut: "/files/favicon.ico",
+    apple: "/files/bible-rhema-ai-app-icon-512.png",
+  },
+  openGraph: {
+    title: "BIBLE RHEMA AI — Scripture first. Always.",
+    description: "Where the Word comes alive. Theological exegesis, prayer intercession, and sermon architecture.",
+    images: ["/files/bible-rhema-ai-logo-on-black.png"],
+  },
 };
 
 export default function RootLayout({

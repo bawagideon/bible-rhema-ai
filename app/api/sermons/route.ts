@@ -54,33 +54,76 @@ export async function POST(req: NextRequest) {
             .from('profiles')
             .upsert({ id: userId }, { onConflict: 'id', ignoreDuplicates: true });
 
-        // 2. Insert or update sermon
-        const { data, error } = await supabase
-            .from('sermons')
-            .insert({
-                user_id: userId,
-                title: sermon.title || 'Untitled Sermon',
-                content_json: sermon,
-            })
-            .select()
-            .single();
+        // 2. Upsert sermon: update if id provided, insert if new
+        let query;
+        if (sermon.id && typeof sermon.id === 'string' && !sermon.id.startsWith('temp_')) {
+            query = supabase
+                .from('sermons')
+                .update({
+                    title: sermon.title || 'Untitled Sermon',
+                    content_json: sermon,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', sermon.id)
+                .eq('user_id', userId)
+                .select()
+                .single();
+        } else {
+            query = supabase
+                .from('sermons')
+                .insert({
+                    user_id: userId,
+                    title: sermon.title || 'Untitled Sermon',
+                    content_json: sermon,
+                })
+                .select()
+                .single();
+        }
+
+        const { data, error } = await query;
 
         if (error) {
             console.error("Supabase save sermon error:", error);
-            return NextResponse.json({
-                success: true,
-                data: {
-                    id: Date.now().toString(),
-                    title: sermon.title || 'Untitled Sermon',
-                    content_json: sermon,
-                    created_at: new Date().toISOString()
-                }
-            });
+            return NextResponse.json({ success: false, error: error.message }, { status: 500 });
         }
 
         return NextResponse.json({ success: true, data });
     } catch (error: any) {
         console.error("Error in POST /api/sermons:", error);
+        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
+}
+
+export async function DELETE(req: NextRequest) {
+    try {
+        const { userId } = await auth();
+
+        if (!userId) {
+            return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+        }
+
+        const { searchParams } = new URL(req.url);
+        const sermonId = searchParams.get('id');
+
+        if (!sermonId) {
+            return NextResponse.json({ success: false, error: "Sermon ID is required" }, { status: 400 });
+        }
+
+        const supabase = getSupabaseServerClient();
+        const { error } = await supabase
+            .from('sermons')
+            .delete()
+            .eq('id', sermonId)
+            .eq('user_id', userId);
+
+        if (error) {
+            console.error("Error deleting sermon:", error);
+            return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+        }
+
+        return NextResponse.json({ success: true });
+    } catch (error: any) {
+        console.error("Error in DELETE /api/sermons:", error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 }

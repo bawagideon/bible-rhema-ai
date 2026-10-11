@@ -35,7 +35,7 @@ export default function SpiritOSPage() {
         exegesis: []
     });
 
-    const { userRole } = useRhema();
+    const { userRole, setActiveStudyContext } = useRhema();
     const searchParams = useSearchParams();
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -109,6 +109,16 @@ export default function SpiritOSPage() {
                 [activeMode]: [...prev[activeMode], aiMsg]
             }));
 
+            const rawCtxHeader = response.headers.get("x-rhema-context");
+            if (rawCtxHeader) {
+                try {
+                    const parsedCtx = JSON.parse(decodeURIComponent(rawCtxHeader));
+                    setActiveStudyContext(parsedCtx);
+                } catch (e) {
+                    console.warn("Failed to parse context header", e);
+                }
+            }
+
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let accumulated = "";
@@ -149,6 +159,7 @@ export default function SpiritOSPage() {
             ...prev,
             [mode]: []
         }));
+        setActiveStudyContext(null);
     };
 
     const quickPrompts = {

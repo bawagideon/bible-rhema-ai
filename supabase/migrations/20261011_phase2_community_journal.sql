@@ -12,10 +12,10 @@ ALTER TABLE public.prayers ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE public.prayers ADD COLUMN IF NOT EXISTS intercessors TEXT[] DEFAULT '{}';
 ALTER TABLE public.prayers ADD COLUMN IF NOT EXISTS testimony TEXT;
 
--- Community prayers read policy: anyone can read prayers marked is_community = true
+-- Community prayers read policy: anyone can read prayers marked is_community = true, or authenticated users can read their own
 DROP POLICY IF EXISTS "Community prayers are viewable by all" ON public.prayers;
 CREATE POLICY "Community prayers are viewable by all" ON public.prayers
-    FOR SELECT USING (is_community = TRUE OR requesting_user_id() = user_id OR requesting_user_id() IS NULL);
+    FOR SELECT USING (is_community = TRUE OR (requesting_user_id() IS NOT NULL AND requesting_user_id() = user_id));
 
 -- 2. JOURNAL ENTRIES TABLE
 CREATE TABLE IF NOT EXISTS public.journal_entries (
@@ -37,16 +37,16 @@ DROP POLICY IF EXISTS "Users can update own journals" ON public.journal_entries;
 DROP POLICY IF EXISTS "Users can delete own journals" ON public.journal_entries;
 
 CREATE POLICY "Users can view own journals" ON public.journal_entries
-    FOR SELECT USING (requesting_user_id() = user_id OR requesting_user_id() IS NULL);
+    FOR SELECT USING (requesting_user_id() IS NOT NULL AND requesting_user_id() = user_id);
 
 CREATE POLICY "Users can insert own journals" ON public.journal_entries
-    FOR INSERT WITH CHECK (requesting_user_id() = user_id OR requesting_user_id() IS NULL);
+    FOR INSERT WITH CHECK (requesting_user_id() IS NOT NULL AND requesting_user_id() = user_id);
 
 CREATE POLICY "Users can update own journals" ON public.journal_entries
-    FOR UPDATE USING (requesting_user_id() = user_id OR requesting_user_id() IS NULL);
+    FOR UPDATE USING (requesting_user_id() IS NOT NULL AND requesting_user_id() = user_id);
 
 CREATE POLICY "Users can delete own journals" ON public.journal_entries
-    FOR DELETE USING (requesting_user_id() = user_id OR requesting_user_id() IS NULL);
+    FOR DELETE USING (requesting_user_id() IS NOT NULL AND requesting_user_id() = user_id);
 
 CREATE INDEX IF NOT EXISTS journal_user_id_idx ON public.journal_entries(user_id);
 
@@ -69,13 +69,13 @@ DROP POLICY IF EXISTS "Users can insert own studies" ON public.saved_studies;
 DROP POLICY IF EXISTS "Users can delete own studies" ON public.saved_studies;
 
 CREATE POLICY "Users can view own studies" ON public.saved_studies
-    FOR SELECT USING (requesting_user_id() = user_id OR requesting_user_id() IS NULL);
+    FOR SELECT USING (requesting_user_id() IS NOT NULL AND requesting_user_id() = user_id);
 
 CREATE POLICY "Users can insert own studies" ON public.saved_studies
-    FOR INSERT WITH CHECK (requesting_user_id() = user_id OR requesting_user_id() IS NULL);
+    FOR INSERT WITH CHECK (requesting_user_id() IS NOT NULL AND requesting_user_id() = user_id);
 
 CREATE POLICY "Users can delete own studies" ON public.saved_studies
-    FOR DELETE USING (requesting_user_id() = user_id OR requesting_user_id() IS NULL);
+    FOR DELETE USING (requesting_user_id() IS NOT NULL AND requesting_user_id() = user_id);
 
 CREATE INDEX IF NOT EXISTS studies_user_id_idx ON public.saved_studies(user_id);
 

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import {
     Library,
@@ -119,8 +120,28 @@ export function ShellLayout({ children }: ShellLayoutProps) {
                 )}
             >
                 <div className={cn("h-14 flex items-center px-3 border-b border-border", isSidebarCollapsed ? "justify-center" : "justify-between")}>
-                    {!isSidebarCollapsed && (
-                        <span className="font-serif text-xl font-bold text-primary tracking-tight">RhemaAI</span>
+                    {!isSidebarCollapsed ? (
+                        <Link href="/" className="flex items-center gap-2 overflow-hidden py-1">
+                            <Image
+                                src="/files/bible-rhema-ai-logo-horizontal.png"
+                                alt="Bible Rhema AI"
+                                width={150}
+                                height={32}
+                                className="object-contain h-7 w-auto"
+                                priority
+                            />
+                        </Link>
+                    ) : (
+                        <Link href="/" className="flex items-center justify-center">
+                            <Image
+                                src="/files/bible-rhema-ai-emblem.png"
+                                alt="Bible Rhema AI"
+                                width={28}
+                                height={28}
+                                className="object-contain h-7 w-auto"
+                                priority
+                            />
+                        </Link>
                     )}
                     <Button
                         variant="ghost"
@@ -207,7 +228,14 @@ export function ShellLayout({ children }: ShellLayoutProps) {
                     <SheetContent side="left" className="w-[80%] max-w-[300px] p-0 flex flex-col justify-between">
                         <div>
                             <div className="h-14 flex items-center px-6 border-b border-border">
-                                <span className="font-serif text-xl font-bold text-primary">RhemaAI</span>
+                                <Image
+                                    src="/files/bible-rhema-ai-logo-horizontal.png"
+                                    alt="Bible Rhema AI"
+                                    width={140}
+                                    height={32}
+                                    className="object-contain h-7 w-auto"
+                                    priority
+                                />
                             </div>
                             <nav className="flex flex-col gap-1 p-4">
                                 {navItems.map((item) => (
@@ -254,7 +282,16 @@ export function ShellLayout({ children }: ShellLayoutProps) {
                         </div>
                     </SheetContent>
                 </Sheet>
-                <span className="font-serif text-lg font-bold">RhemaAI</span>
+                <Link href="/" className="flex items-center">
+                    <Image
+                        src="/files/bible-rhema-ai-logo-horizontal.png"
+                        alt="Bible Rhema AI"
+                        width={130}
+                        height={28}
+                        className="object-contain h-6 w-auto"
+                        priority
+                    />
+                </Link>
                 <div className="w-9" /> {/* Spacer */}
             </div>
 

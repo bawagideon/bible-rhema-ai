@@ -35,11 +35,14 @@ export default function Home() {
                 {/* Header Greeting & Real Dynamic Streak */}
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-2xl font-serif font-medium tracking-tight text-white">
+                        <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-[10px] font-medium tracking-widest text-[#D4AF37] bg-[#D4AF37]/10 border border-[#D4AF37]/20 uppercase mb-2">
+                            Scripture first. Always.
+                        </div>
+                        <h1 className="text-2xl md:text-3xl font-serif font-medium tracking-tight text-white">
                             {greetingName}
                         </h1>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                            Welcome into the Sanctuary. May Christ's peace rule in your heart.
+                        <p className="text-xs text-muted-foreground mt-1">
+                            Welcome into the Sanctuary. Where the Word comes alive.
                         </p>
                     </div>
                     <WalkWithGodStreak days={streakDays} />

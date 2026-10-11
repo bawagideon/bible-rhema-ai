@@ -33,14 +33,34 @@ export async function POST(req: NextRequest) {
         }
 
         const data = verification.data;
-        const targetUserId = data.metadata?.userId || data.metadata?.user_id || authUserId;
-        const targetTier = (data.metadata?.tier || 'DISCIPLE').toUpperCase();
-        const cycle = data.metadata?.cycle || 'monthly';
-        const customerCode = data.customer?.customer_code;
+        const metadataUserId = data.metadata?.userId || data.metadata?.user_id;
+        const targetUserId = authUserId || metadataUserId;
 
         if (!targetUserId) {
             return NextResponse.json({ success: false, error: "Unable to associate payment with user account" }, { status: 400 });
         }
+
+        // Cross-account theft prevention
+        if (authUserId && metadataUserId && metadataUserId !== authUserId) {
+            return NextResponse.json({ success: false, error: "Payment was not initiated for this account" }, { status: 403 });
+        }
+
+        const supabase = getSupabaseServerClient();
+
+        // Replay prevention: Check if reference was already redeemed by a different account
+        const { data: existingRefProfile } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('paystack_reference', reference)
+            .maybeSingle();
+
+        if (existingRefProfile && existingRefProfile.id !== targetUserId) {
+            return NextResponse.json({ success: false, error: "This transaction reference has already been redeemed" }, { status: 409 });
+        }
+
+        const targetTier = (data.metadata?.tier || 'DISCIPLE').toUpperCase();
+        const cycle = data.metadata?.cycle || 'monthly';
+        const customerCode = data.customer?.customer_code;
 
         // Period end calculation
         const periodEnd = new Date();
@@ -49,8 +69,6 @@ export async function POST(req: NextRequest) {
         } else {
             periodEnd.setMonth(periodEnd.getMonth() + 1);
         }
-
-        const supabase = getSupabaseServerClient();
 
         // Update profile in Supabase
         const { error: updateError } = await supabase

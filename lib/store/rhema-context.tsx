@@ -6,6 +6,27 @@ import { SermonData } from '@/components/studio/sermon-builder';
 import { useUser } from '@clerk/nextjs';
 import { LoadingScreen } from '@/components/ui/loading-screen';
 
+export interface StudyContextData {
+    query: string;
+    mode: 'exegesis' | 'devotion';
+    passageFocus: string;
+    passageSummary: string;
+    keyTerms: {
+        term: string;
+        original: string;
+        language: string;
+        definition: string;
+        occurrencesNote?: string;
+    }[];
+    crossReferences: {
+        reference: string;
+        text: string;
+        connection?: string;
+    }[];
+    followUpQuestions: string[];
+    sourcesUsed: string[];
+}
+
 interface RhemaContextType {
     userRole: UserRole;
     userTier: UserRole;
@@ -21,6 +42,8 @@ interface RhemaContextType {
     triggerPdfExport: () => void;
     lastSavedTimestamp: number | null;
     triggerSaveComplete: () => void;
+    activeStudyContext: StudyContextData | null;
+    setActiveStudyContext: (context: StudyContextData | null) => void;
 }
 
 const RhemaContext = createContext<RhemaContextType | undefined>(undefined);
@@ -36,6 +59,7 @@ export function RhemaProvider({ children }: { children: ReactNode }) {
     const [sermonToLoad, setSermonToLoad] = useState<SermonData | null>(null);
     const [pdfExportTimestamp, setPdfExportTimestamp] = useState<number | null>(null);
     const [lastSavedTimestamp, setLastSavedTimestamp] = useState<number | null>(null);
+    const [activeStudyContext, setActiveStudyContext] = useState<StudyContextData | null>(null);
 
     const [isLoadingProfile, setIsLoadingProfile] = useState(true);
 
@@ -107,7 +131,9 @@ export function RhemaProvider({ children }: { children: ReactNode }) {
             pdfExportTimestamp,
             triggerPdfExport,
             lastSavedTimestamp,
-            triggerSaveComplete
+            triggerSaveComplete,
+            activeStudyContext,
+            setActiveStudyContext
         }}>
             {children}
         </RhemaContext.Provider>

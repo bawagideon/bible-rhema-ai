@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     const eventType = evt.type;
     const supabase = getSupabaseClient();
 
-    if (eventType === 'user.created' || eventType === 'user.updated') {
+    if (eventType === 'user.created') {
         const { id, email_addresses, first_name, last_name, primary_email_address_id, image_url } = evt.data;
 
         const email = email_addresses?.find(e => e.id === primary_email_address_id)?.email_address ||
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
             `${id}@rhema.internal`;
         const name = `${first_name || ''} ${last_name || ''}`.trim() || 'Fellow Disciple';
 
-        console.log(`[CLERK WEBHOOK] Upserting user ${id} (${email})`);
+        console.log(`[CLERK WEBHOOK] Creating user ${id} (${email})`);
 
         const { error } = await supabase.from('profiles').upsert({
             id: id,
@@ -70,15 +70,15 @@ export async function POST(req: Request) {
             updated_at: new Date().toISOString()
         }, {
             onConflict: 'id',
-            ignoreDuplicates: false
+            ignoreDuplicates: true
         });
 
         if (error) {
-            console.error('[CLERK WEBHOOK] Error syncing profile:', error);
+            console.error('[CLERK WEBHOOK] Error creating profile:', error);
             return new Response(`Database sync error: ${error.message}`, { status: 500 });
         }
 
-        // Initialize user stats if needed
+        // Initialize user stats cleanly at 0
         await supabase.from('user_stats').upsert({
             user_id: id,
             prayer_streak_days: 0,
@@ -87,7 +87,32 @@ export async function POST(req: Request) {
             total_focus_minutes: 0
         }, { onConflict: 'user_id' });
 
-        console.log(`[CLERK WEBHOOK] User ${id} synchronized successfully.`);
+        console.log(`[CLERK WEBHOOK] User ${id} created successfully.`);
+    } else if (eventType === 'user.updated') {
+        const { id, email_addresses, first_name, last_name, primary_email_address_id, image_url } = evt.data;
+
+        const email = email_addresses?.find(e => e.id === primary_email_address_id)?.email_address ||
+            email_addresses?.[0]?.email_address;
+        const name = `${first_name || ''} ${last_name || ''}`.trim();
+
+        console.log(`[CLERK WEBHOOK] Updating user ${id}`);
+
+        const updateData: Record<string, any> = {
+            updated_at: new Date().toISOString()
+        };
+        if (email) updateData.email = email;
+        if (name) updateData.full_name = name;
+        if (image_url) updateData.avatar_url = image_url;
+
+        // NOTE: We do NOT overwrite tier or subscription_status on user.updated
+        const { error } = await supabase.from('profiles').update(updateData).eq('id', id);
+
+        if (error) {
+            console.error('[CLERK WEBHOOK] Error updating profile:', error);
+            return new Response(`Database sync error: ${error.message}`, { status: 500 });
+        }
+
+        console.log(`[CLERK WEBHOOK] User ${id} updated successfully without affecting tier.`);
     } else if (eventType === 'user.deleted') {
         const { id } = evt.data;
         if (id) {

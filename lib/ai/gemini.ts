@@ -69,21 +69,100 @@ Structure your sermon:
 6. <h2>V. Point 3: The Empowered Walk</h2> (Practical steps, how the Holy Spirit enables this)
 7. <h2>VI. Conclusion & Altar Response</h2> (Summary, closing invitation, guided pastoral prayer)`;
 
+export interface StudyContextData {
+    query: string;
+    mode: 'exegesis' | 'devotion';
+    passageFocus: string;
+    passageSummary: string;
+    keyTerms: {
+        term: string;
+        original: string;
+        language: string;
+        definition: string;
+        occurrencesNote?: string;
+    }[];
+    crossReferences: {
+        reference: string;
+        text: string;
+        connection?: string;
+    }[];
+    followUpQuestions: string[];
+    sourcesUsed: string[];
+}
+
 /**
- * Generate a response using Gemini or intelligent fallback
+ * Crisis Detection Safeguard: Detect severe distress and provide immediate pastoral care + crisis helplines
  */
-export async function generateSpiritOSResponse(
+export function checkCrisisTrigger(query: string): string | null {
+    const q = query.toLowerCase();
+    const crisisPatterns = [
+        "kill myself", "end my life", "suicide", "want to die", "better off dead",
+        "no reason to live", "can't go on anymore", "ending it all", "hang myself",
+        "take my own life", "wish i was dead"
+    ];
+    if (crisisPatterns.some(p => q.includes(p))) {
+        return `> **URGENT PASTORAL CARE: YOU ARE NOT ALONE & YOUR LIFE MATTERS DEEPLY TO GOD**
+> 
+> *“The LORD is near to the brokenhearted and saves the crushed in spirit.”* — **Psalm 34:18**
+> 
+> If you are experiencing overwhelming pain, despair, or thoughts of harming yourself, please reach out right now. There are compassionate people ready to listen and support you 24/7 with love and complete confidentiality:
+> 
+> - **In the US & Canada**: Call or text **988** (Suicide & Crisis Lifeline)
+> - **Crisis Text Line**: Text **HOME** to **741741**
+> - **In the UK**: Call **111** or contact **Samaritans at 116 123**
+> - **In Nigeria**: Call the Lagos State Lifeline at **0805 882 0777** or SURPIN at **0908 021 7555**
+> - **International**: Visit [findahelpline.com](https://findahelpline.com/) or [befrienders.org](https://www.befrienders.org/)
+> 
+> Please talk to a trusted friend, pastor, or healthcare provider right now. God has not abandoned you, and this season does not have the final word on your life.
+
+---
+
+`;
+    }
+    return null;
+}
+
+const CONTEXT_PROMPT_INSTRUCTION = `
+
+---
+CRITICAL FORMATTING INSTRUCTION:
+At the very end of your response, output exactly this delimiter on a new line:
+---RHEMA_STUDY_CONTEXT---
+Followed by a valid JSON object (no markdown backticks around the JSON) with this exact schema:
+{
+  "passageFocus": "Main Scripture Book Chapter:Verse(s)",
+  "passageSummary": "1-2 sentence core truth of this passage",
+  "keyTerms": [
+    { "term": "English word", "original": "Original Hebrew/Greek", "language": "Greek/Hebrew", "definition": "Lexical meaning", "occurrencesNote": "Biblical context note" }
+  ],
+  "crossReferences": [
+    { "reference": "Book Chapter:Verse", "text": "Concise verse snippet", "connection": "Theological link" }
+  ],
+  "followUpQuestions": [
+    "Thought-provoking follow-up question 1",
+    "Thought-provoking follow-up question 2"
+  ]
+}`;
+
+/**
+ * Generate a complete study response with structured theological context for the Living Context Panel
+ */
+export async function generateSpiritOSStudy(
     query: string,
     mode: SpiritOSMode = 'devotion',
     history: { role: 'user' | 'ai' | 'model'; content: string }[] = []
-): Promise<string> {
+): Promise<{ content: string; context: StudyContextData }> {
+    const crisisAlert = checkCrisisTrigger(query);
     const ai = getGenAIClient();
+
     if (ai) {
         try {
-            const systemPrompt = mode === 'exegesis' ? EXEGESIS_SYSTEM_PROMPT : DEVOTIONAL_SYSTEM_PROMPT;
+            const basePrompt = mode === 'exegesis' ? EXEGESIS_SYSTEM_PROMPT : DEVOTIONAL_SYSTEM_PROMPT;
+            const fullSystemPrompt = basePrompt + CONTEXT_PROMPT_INSTRUCTION;
+
             const model = ai.client.getGenerativeModel({
                 model: ai.modelName,
-                systemInstruction: systemPrompt
+                systemInstruction: fullSystemPrompt
             });
 
             const chatHistory = history.map(h => ({
@@ -93,14 +172,63 @@ export async function generateSpiritOSResponse(
 
             const chat = model.startChat({ history: chatHistory });
             const result = await chat.sendMessage(query);
-            return result.response.text();
+            const rawText = result.response.text();
+
+            // Extract context delimiter
+            const delimiter = "---RHEMA_STUDY_CONTEXT---";
+            if (rawText.includes(delimiter)) {
+                const parts = rawText.split(delimiter);
+                const answerContent = parts[0].trim();
+                const jsonStr = parts[1].replace(/```json/g, "").replace(/```/g, "").trim();
+
+                try {
+                    const parsedContext = JSON.parse(jsonStr);
+                    const finalContent = crisisAlert ? `${crisisAlert}\n\n${answerContent}` : answerContent;
+                    return {
+                        content: finalContent,
+                        context: {
+                            query,
+                            mode,
+                            passageFocus: parsedContext.passageFocus || extractPassageFocus(query, answerContent),
+                            passageSummary: parsedContext.passageSummary || "Scriptural meditation on God's living Word.",
+                            keyTerms: Array.isArray(parsedContext.keyTerms) ? parsedContext.keyTerms : [],
+                            crossReferences: Array.isArray(parsedContext.crossReferences) ? parsedContext.crossReferences : [],
+                            followUpQuestions: Array.isArray(parsedContext.followUpQuestions) ? parsedContext.followUpQuestions : [],
+                            sourcesUsed: ["Berean / WEB Canonical Scripture", "Strong's Exhaustive Concordance", "Christocentric Exegesis"]
+                        }
+                    };
+                } catch (jsonErr) {
+                    console.warn("Could not parse AI context JSON, extracting heuristically:", jsonErr);
+                }
+            }
+
+            // If delimiter was absent, return content and derive context
+            const finalContent = crisisAlert ? `${crisisAlert}\n\n${rawText}` : rawText;
+            return {
+                content: finalContent,
+                context: deriveContextFromResponse(query, rawText, mode)
+            };
         } catch (error) {
-            console.error("Gemini API call failed, using theological engine fallback:", error);
+            console.error("Gemini API call failed, using intelligent theological fallback:", error);
         }
     }
 
     // Intelligent built-in theological fallback
-    return getFallbackSpiritOSResponse(query, mode);
+    const fallbackContent = getFallbackSpiritOSResponse(query, mode);
+    const finalContent = crisisAlert ? `${crisisAlert}\n\n${fallbackContent}` : fallbackContent;
+    return {
+        content: finalContent,
+        context: deriveContextFromResponse(query, fallbackContent, mode)
+    };
+}
+
+export async function generateSpiritOSResponse(
+    query: string,
+    mode: SpiritOSMode = 'devotion',
+    history: { role: 'user' | 'ai' | 'model'; content: string }[] = []
+): Promise<string> {
+    const study = await generateSpiritOSStudy(query, mode, history);
+    return study.content;
 }
 
 /**
@@ -265,4 +393,78 @@ function getFallbackSermon(title: string, scripture: string, tone: string): stri
 <p>Today, examine your foundation. What have you been building your security upon? If your foundation has begun to crack under the weight of life, Jesus is extending His hand right now.</p>
 <p><strong>Closing Pastoral Prayer:</strong></p>
 <blockquote>“Lord Jesus, we surrender our fragile kingdoms to You. Be the cornerstone of our homes, our careers, and our hearts. Anchor our souls upon Your eternal truth. In Your holy name we pray, Amen.”</blockquote>`;
+}
+
+function extractPassageFocus(query: string, content: string): string {
+    const scriptureRegex = /\b(?:[123]\s+)?(?:Genesis|Exodus|Leviticus|Numbers|Deuteronomy|Joshua|Judges|Ruth|[12]\s+Samuel|[12]\s+Kings|[12]\s+Chronicles|Ezra|Nehemiah|Esther|Job|Psalms?|Proverbs|Ecclesiastes|Song of Solomon|Isaiah|Jeremiah|Lamentations|Ezekiel|Daniel|Hosea|Joel|Amos|Obadiah|Jonah|Micah|Nahum|Habakkuk|Zephaniah|Haggai|Zechariah|Malachi|Matthew|Mark|Luke|John|Acts|Romans|[12]\s+Corinthians|Galatians|Ephesians|Philippians|Colossians|[12]\s+Thessalonians|[12]\s+Timothy|Titus|Philemon|Hebrews|James|[12]\s+Peter|[123]\s+John|Jude|Revelation)\s+\d+:\d+(?:-\d+)?\b/i;
+
+    const queryMatch = query.match(scriptureRegex);
+    if (queryMatch) return queryMatch[0];
+
+    const contentMatch = content.match(scriptureRegex);
+    if (contentMatch) return contentMatch[0];
+
+    return "Scripture Focus";
+}
+
+function deriveContextFromResponse(query: string, content: string, mode: SpiritOSMode): StudyContextData {
+    const passage = extractPassageFocus(query, content);
+    const qLower = query.toLowerCase();
+
+    const lexicalBank: Record<string, { term: string; original: string; language: string; definition: string; occurrencesNote?: string }> = {
+        peace: { term: "Peace", original: "εἰρήνη (Eirēnē)", language: "Greek", definition: "Wholeness, quietness, oneness under Christ's rule.", occurrencesNote: "Found 92 times in the New Testament." },
+        shalom: { term: "Peace / Wholeness", original: "שָׁלוֹם (Shālôm)", language: "Hebrew", definition: "Completeness, sound health, divine welfare.", occurrencesNote: "Central covenant word appearing 237 times in the Old Testament." },
+        love: { term: "Love", original: "ἀγάπη (Agapē)", language: "Greek", definition: "Self-sacrificing, unconditional covenant love.", occurrencesNote: "116 occurrences in NT; distinctive characteristic of God's nature." },
+        hesed: { term: "Steadfast Love", original: "חֶסֶד (Ḥesed)", language: "Hebrew", definition: "Covenant faithfulness, unfailing loyal kindness.", occurrencesNote: "Appears 248 times across OT covenant books." },
+        grace: { term: "Grace", original: "χάρις (Charis)", language: "Greek", definition: "Unearned favor, divine influence upon the human heart.", occurrencesNote: "Found 156 times in NT epistles." },
+        faith: { term: "Faith", original: "πίστις (Pistis)", language: "Greek", definition: "Firm persuasion, relational conviction in God's promises.", occurrencesNote: "Found 243 times in NT." },
+        word: { term: "Word / Spoken Truth", original: "ῥῆμα (Rhēma)", language: "Greek", definition: "The living, actively spoken word of God by the Spirit.", occurrencesNote: "Distinguished from Logos as immediate utterance." },
+        logos: { term: "Divine Word", original: "λόγος (Logos)", language: "Greek", definition: "The divine Reason, eternal expression of God incarnate.", occurrencesNote: "John 1:1; 330 times in the New Testament." },
+        truth: { term: "Truth", original: "ἀλήθεια (Alētheia)", language: "Greek", definition: "Reality as God sees it; unhidden divine reality.", occurrencesNote: "Found 109 times in the New Testament." },
+        rest: { term: "Rest", original: "ἀνάπαυσις (Anapausis)", language: "Greek", definition: "Cessation from exhausting toil; soul refreshment in Christ.", occurrencesNote: "Matthew 11:29." }
+    };
+
+    const matchedTerms = [];
+    for (const [key, termObj] of Object.entries(lexicalBank)) {
+        if (qLower.includes(key) || content.toLowerCase().includes(key)) {
+            matchedTerms.push(termObj);
+        }
+    }
+
+    if (matchedTerms.length === 0) {
+        matchedTerms.push(mode === 'exegesis' ? lexicalBank.logos : lexicalBank.peace);
+    }
+
+    const crossRefs = [];
+    if (passage.toLowerCase().includes("john")) {
+        crossRefs.push({ reference: "1 John 1:1-4", text: "That which was from the beginning, which we have heard, which we have seen...", connection: "Johannine theology of the incarnate Word." });
+        crossRefs.push({ reference: "Colossians 1:15-17", text: "He is the image of the invisible God, the firstborn of all creation.", connection: "Christ as the preeminent agent of creation." });
+    } else if (passage.toLowerCase().includes("romans")) {
+        crossRefs.push({ reference: "Genesis 50:20", text: "You meant evil against me, but God meant it for good...", connection: "Covenant sovereignty working good out of suffering." });
+        crossRefs.push({ reference: "2 Corinthians 4:17", text: "For this light momentary affliction is preparing for us an eternal weight of glory.", connection: "Kingdom perspective on trials." });
+    } else {
+        crossRefs.push({ reference: "Psalm 119:105", text: "Your word is a lamp to my feet and a light to my path.", connection: "Divine guidance through the written Word." });
+        crossRefs.push({ reference: "Hebrews 4:12", text: "For the word of God is living and active, sharper than any two-edged sword.", connection: "The discerning power of Scripture." });
+    }
+
+    const followUps = mode === 'exegesis' ? [
+        `How does ${passage} connect to the broader covenant narrative?`,
+        `What is the original historical situation of the original audience?`,
+        `How does this passage point to the person and work of Christ?`
+    ] : [
+        `How does the truth of ${passage} speak to my current season of life?`,
+        `What is one practical step of obedience the Holy Spirit is prompting?`,
+        `How can I pray this passage over my family and community?`
+    ];
+
+    return {
+        query,
+        mode,
+        passageFocus: passage,
+        passageSummary: `An exploration of ${passage} grounded in Christ-centered biblical truth.`,
+        keyTerms: matchedTerms.slice(0, 3),
+        crossReferences: crossRefs,
+        followUpQuestions: followUps,
+        sourcesUsed: ["Berean / WEB Canonical Scripture", "Strong's Lexicon", "Christocentric Exegesis"]
+    };
 }

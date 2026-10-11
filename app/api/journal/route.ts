@@ -26,13 +26,14 @@ export async function GET() {
             .order('created_at', { ascending: false });
 
         if (error) {
-            console.warn("Journal table read note:", error.message);
-            return NextResponse.json({ success: true, data: [] });
+            console.error("Error fetching journal entries:", error);
+            return NextResponse.json({ success: false, error: error.message }, { status: 500 });
         }
 
         return NextResponse.json({ success: true, data: data || [] });
     } catch (e: any) {
-        return NextResponse.json({ success: true, data: [] });
+        console.error("Error in GET /api/journal:", e);
+        return NextResponse.json({ success: false, error: e.message }, { status: 500 });
     }
 }
 
