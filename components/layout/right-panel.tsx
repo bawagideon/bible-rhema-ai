@@ -6,12 +6,12 @@ import { useRhema } from "@/lib/store/rhema-context";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { BookOpen, Settings, Download, Search, Info, Trash2, Library } from "lucide-react";
+import { BookOpen, Settings, Download, Search, Info, Trash2, Library, X } from "lucide-react";
 import { fetchSermons, SavedSermon } from "@/lib/api";
 
 export function RightPanel() {
     const pathname = usePathname();
-    const { isRightPanelOpen, setSermonToLoad, triggerPdfExport, lastSavedTimestamp } = useRhema();
+    const { isRightPanelOpen, toggleRightPanel, setSermonToLoad, triggerPdfExport, lastSavedTimestamp } = useRhema();
     const [sermons, setSermons] = useState<SavedSermon[]>([]);
     const [loadingSermons, setLoadingSermons] = useState(false);
 
@@ -189,16 +189,19 @@ export function RightPanel() {
             className={cn(
                 "border-l border-white/10 bg-[#121212] transition-all duration-300 ease-in-out absolute md:relative right-0 h-full z-30 shadow-2xl md:shadow-none overflow-hidden flex flex-col",
                 isRightPanelOpen
-                    ? "w-[300px] translate-x-0 opacity-100"
-                    : "w-0 translate-x-[300px] md:translate-x-0 opacity-0 md:opacity-100 pointer-events-none md:pointer-events-auto"
+                    ? "w-[300px] translate-x-0 opacity-100 pointer-events-auto"
+                    : "w-0 translate-x-[300px] opacity-0 pointer-events-none"
             )}
         >
-            <div className="flex-none h-14 flex items-center px-6 border-b border-white/10 bg-[#121212]/50 backdrop-blur">
+            <div className="flex-none h-14 flex items-center justify-between px-6 border-b border-white/10 bg-[#121212]/50 backdrop-blur">
                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">
                     {pathname === '/spirit-os' ? 'Theological Insight' :
                         pathname === '/studio' ? 'Publishing Settings' :
                             pathname === '/altar' ? 'Scripture Bank' : 'Context'}
                 </span>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-white md:hidden" onClick={toggleRightPanel}>
+                    <X className="h-4 w-4" />
+                </Button>
             </div>
 
             <ScrollArea className="flex-1">

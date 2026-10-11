@@ -204,25 +204,54 @@ export function ShellLayout({ children }: ShellLayoutProps) {
                             <Menu className="h-5 w-5" />
                         </Button>
                     </SheetTrigger>
-                    <SheetContent side="left" className="w-[80%] max-w-[300px] p-0">
-                        <div className="h-14 flex items-center px-6 border-b border-border">
-                            <span className="font-serif text-xl font-bold text-primary">RhemaAI</span>
+                    <SheetContent side="left" className="w-[80%] max-w-[300px] p-0 flex flex-col justify-between">
+                        <div>
+                            <div className="h-14 flex items-center px-6 border-b border-border">
+                                <span className="font-serif text-xl font-bold text-primary">RhemaAI</span>
+                            </div>
+                            <nav className="flex flex-col gap-1 p-4">
+                                {navItems.map((item) => (
+                                    <Link
+                                        key={item.name}
+                                        href={item.href}
+                                        className={cn(
+                                            "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted transition-colors",
+                                            pathname === item.href ? "bg-muted text-primary font-bold" : "text-muted-foreground"
+                                        )}
+                                    >
+                                        <item.icon className="h-5 w-5" />
+                                        {item.name}
+                                    </Link>
+                                ))}
+                            </nav>
                         </div>
-                        <nav className="flex flex-col gap-1 p-4">
-                            {navItems.map((item) => (
+                        <div className="p-4 border-t border-border space-y-3 bg-card/40">
+                            <div className="flex items-center gap-3 px-2">
+                                <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-xs ring-1 ring-primary/40 text-transform uppercase">
+                                    {(userName || 'B').charAt(0)}
+                                </div>
+                                <div className="flex flex-col overflow-hidden text-left">
+                                    <span className="text-sm font-medium truncate">{userName}</span>
+                                    <span className="text-xs text-muted-foreground truncate">{userRole || 'GUEST'} Plan</span>
+                                </div>
+                            </div>
+                            <div className="pt-2 border-t border-border/40 space-y-1">
                                 <Link
-                                    key={item.name}
-                                    href={item.href}
-                                    className={cn(
-                                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted transition-colors",
-                                        pathname === item.href ? "bg-muted text-primary" : "text-muted-foreground"
-                                    )}
+                                    href="/settings"
+                                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                                 >
-                                    <item.icon className="h-5 w-5" />
-                                    {item.name}
+                                    <Settings className="h-4 w-4" />
+                                    <span>Sanctuary Settings</span>
                                 </Link>
-                            ))}
-                        </nav>
+                                <button
+                                    onClick={() => signOut()}
+                                    className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors text-left"
+                                >
+                                    <LogOut className="h-4 w-4" />
+                                    <span>Sign Out</span>
+                                </button>
+                            </div>
+                        </div>
                     </SheetContent>
                 </Sheet>
                 <span className="font-serif text-lg font-bold">RhemaAI</span>
