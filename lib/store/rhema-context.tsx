@@ -3,8 +3,7 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { UserRole } from '@/lib/types';
 import { SermonData } from '@/components/studio/sermon-builder';
-import { useUser, useAuth } from '@clerk/nextjs';
-import { createClerkSupabaseClient } from '@/lib/supabaseClient';
+import { useUser } from '@clerk/nextjs';
 import { LoadingScreen } from '@/components/ui/loading-screen';
 
 interface RhemaContextType {
@@ -13,6 +12,7 @@ interface RhemaContextType {
     userName: string;
     userAvatar: string;
     toggleRole: () => void;
+    refreshProfile: () => Promise<void>;
     isRightPanelOpen: boolean;
     toggleRightPanel: () => void;
     sermonToLoad: SermonData | null;
@@ -27,62 +27,55 @@ const RhemaContext = createContext<RhemaContextType | undefined>(undefined);
 
 export function RhemaProvider({ children }: { children: ReactNode }) {
     const { user, isLoaded } = useUser();
-    const { getToken } = useAuth();
 
     const [userRole, setUserRole] = useState<UserRole>('SEEKER');
     const [userTier, setUserTier] = useState<UserRole>('SEEKER');
     const [userName, setUserName] = useState<string>("Believer");
     const [userAvatar, setUserAvatar] = useState<string>("");
-    const [isRightPanelOpen, setIsRightPanelOpen] = useState(true); // Default to open
+    const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
     const [sermonToLoad, setSermonToLoad] = useState<SermonData | null>(null);
     const [pdfExportTimestamp, setPdfExportTimestamp] = useState<number | null>(null);
     const [lastSavedTimestamp, setLastSavedTimestamp] = useState<number | null>(null);
 
-    // Loading State
     const [isLoadingProfile, setIsLoadingProfile] = useState(true);
 
-    // Fetch Tier on Mount (Auth-aware)
+    const fetchProfile = async () => {
+        if (!isLoaded) return;
+
+        if (!user) {
+            setUserRole('SEEKER');
+            setUserTier('SEEKER');
+            setIsLoadingProfile(false);
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/user/profile');
+            const data = await res.json();
+
+            if (data && data.authenticated) {
+                const tier = (data.tier || 'SEEKER').toUpperCase() as UserRole;
+                setUserRole(tier);
+                setUserTier(tier);
+                if (data.full_name) setUserName(data.full_name);
+                if (data.avatar_url) setUserAvatar(data.avatar_url);
+            } else if (user) {
+                setUserName(user.fullName || user.firstName || "Believer");
+                if (user.imageUrl) setUserAvatar(user.imageUrl);
+            }
+        } catch (error) {
+            console.error("Error fetching user profile:", error);
+        } finally {
+            setIsLoadingProfile(false);
+        }
+    };
+
     useEffect(() => {
-        const fetchTier = async () => {
-            if (!isLoaded) return; // Wait for Clerk
-
-            if (!user) {
-                setIsLoadingProfile(false); // Guest / Not logged in
-                return;
-            }
-
-            try {
-                const token = await getToken({ template: 'supabase' });
-                if (!token) {
-                    setIsLoadingProfile(false);
-                    return;
-                }
-                const supabase = createClerkSupabaseClient(token);
-
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('tier, full_name, avatar_url')
-                    .eq('id', user.id)
-                    .single();
-
-                if (profile) {
-                    if (profile.tier) {
-                        setUserRole(profile.tier as UserRole);
-                        setUserTier(profile.tier as UserRole);
-                    }
-                    if (profile.full_name) setUserName(profile.full_name);
-                    if (profile.avatar_url) setUserAvatar(profile.avatar_url);
-                }
-            } catch (error) {
-                console.error("Error fetching profile:", error);
-            } finally {
-                setIsLoadingProfile(false);
-            }
-        };
-        fetchTier();
-    }, [user, isLoaded, getToken]);
+        fetchProfile();
+    }, [user, isLoaded]);
 
     const toggleRole = () => {
+        // Dev helper to preview UI across tiers
         setUserRole(prev => {
             if (prev === 'MINISTER') return 'DISCIPLE';
             if (prev === 'DISCIPLE') return 'SEEKER';
@@ -106,6 +99,7 @@ export function RhemaProvider({ children }: { children: ReactNode }) {
             userName,
             userAvatar,
             toggleRole,
+            refreshProfile: fetchProfile,
             isRightPanelOpen,
             toggleRightPanel,
             sermonToLoad,
@@ -122,8 +116,8 @@ export function RhemaProvider({ children }: { children: ReactNode }) {
 
 export function useRhema() {
     const context = useContext(RhemaContext);
-    if (context === undefined) {
-        throw new Error('useRhema must be used within a RhemaProvider');
+    if (!context) {
+        throw new Error("useRhema must be used within a RhemaProvider");
     }
     return context;
 }

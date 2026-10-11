@@ -20,7 +20,7 @@ interface PrayerCardProps {
     prayer: Prayer;
     onStatusChange: (id: string, newStatus: 'active' | 'answered') => void;
     onDelete: (id: string) => void;
-    onClick: () => void;
+    onClick?: () => void;
 }
 
 export function PrayerCard({ prayer, onStatusChange, onDelete, onClick }: PrayerCardProps) {

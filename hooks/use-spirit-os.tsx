@@ -5,51 +5,56 @@ import { useState, ReactNode, useRef } from 'react';
 export interface ChatMessage {
     id: string;
     role: 'user' | 'ai';
-    content: ReactNode | string;
+    content: string;
+    mode?: 'devotion' | 'exegesis';
 }
 
 export function useSpiritOS() {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
-    // We use a ref to track the current AI message content during streaming
-    // to avoid stale closure issues inside the stream loop
+    // Track streaming content to avoid stale closures
     const streamContent = useRef("");
 
-    const sendMessage = async (text: string) => {
+    const sendMessage = async (text: string, mode: 'devotion' | 'exegesis' = 'devotion') => {
+        if (!text.trim()) return;
+
         // 1. Add User Message
         const userMsg: ChatMessage = {
             id: Date.now().toString(),
             role: 'user',
-            content: text
+            content: text,
+            mode
         };
         setMessages(prev => [...prev, userMsg]);
         setIsLoading(true);
 
         try {
-            const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-            const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+            // 2. Call Server-Side Next.js API Route
+            const history = messages.slice(-6).map(m => ({
+                role: m.role,
+                content: m.content
+            }));
 
-            if (!supabaseUrl || !supabaseKey) {
-                throw new Error("Missing Supabase Environment Variables");
-            }
-
-            // 2. Call Edge Function
-            const response = await fetch(`${supabaseUrl}/functions/v1/chat-with-rhema`, {
+            const response = await fetch('/api/spirit-os', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${supabaseKey}`
                 },
-                body: JSON.stringify({ query: text })
+                body: JSON.stringify({
+                    query: text,
+                    mode,
+                    history
+                })
             });
 
             if (!response.ok) {
-                throw new Error(`Oracles Silent: ${response.statusText}`);
+                const errJson = await response.json().catch(() => null);
+                throw new Error(errJson?.error || `Request failed with status ${response.status}`);
             }
 
             if (!response.body) {
-                throw new Error("No response body");
+                throw new Error("No response stream available");
             }
 
             // 3. Prepare AI Message Placeholder
@@ -57,7 +62,8 @@ export function useSpiritOS() {
             const aiMsg: ChatMessage = {
                 id: aiMsgId,
                 role: 'ai',
-                content: "" // Start empty
+                content: "",
+                mode
             };
             setMessages(prev => [...prev, aiMsg]);
 
@@ -73,7 +79,7 @@ export function useSpiritOS() {
                 const chunk = decoder.decode(value, { stream: true });
                 streamContent.current += chunk;
 
-                // Update the specific message in state
+                // Update message in state
                 setMessages(prev => prev.map(msg =>
                     msg.id === aiMsgId
                         ? { ...msg, content: streamContent.current }
@@ -84,11 +90,12 @@ export function useSpiritOS() {
         } catch (error: any) {
             console.error("SpiritOS Error:", error);
 
-            // Fallback Message
+            // Informative, graceful fallback message
             const errorMsg: ChatMessage = {
                 id: (Date.now() + 2).toString(),
                 role: 'ai',
-                content: "I am praying on this... (The connection to the SpiritOS Prophet seems interrupted. Please check your API Keys and Network.)"
+                content: "I am meditating on this... Our server encountered an unexpected interruption. Please try asking again in a moment.",
+                mode
             };
             setMessages(prev => [...prev, errorMsg]);
         } finally {
@@ -96,9 +103,14 @@ export function useSpiritOS() {
         }
     };
 
+    const clearMessages = () => {
+        setMessages([]);
+    };
+
     return {
         messages,
         sendMessage,
+        clearMessages,
         isLoading
     };
 }

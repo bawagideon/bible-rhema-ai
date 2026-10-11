@@ -21,19 +21,13 @@ export default function AltarPage() {
 
     // Fetch Prayers
     const fetchPrayers = async () => {
-        if (!userId) return;
         try {
-            const token = await getToken({ template: 'supabase' });
-            if (!token) return;
-            const supabase = createClerkSupabaseClient(token);
-
-            const { data, error } = await supabase
-                .from('prayers')
-                .select('*')
-                .eq('user_id', userId)
-                .order('created_at', { ascending: false });
-
-            if (data) setPrayers(data);
+            setIsLoading(true);
+            const res = await fetch('/api/prayers');
+            const data = await res.json();
+            if (data.success && data.data) {
+                setPrayers(data.data);
+            }
         } catch (error) {
             console.error("Error fetching prayers:", error);
         } finally {
@@ -43,76 +37,69 @@ export default function AltarPage() {
 
     useEffect(() => {
         fetchPrayers();
-    }, [userId, getToken]);
+    }, [userId]);
 
     // Handle Add Prayer
     const handleAddPrayer = async () => {
         if (!newPrayer.trim()) return;
 
+        const tempId = Math.random().toString();
+        const optimisticPrayer = {
+            id: tempId,
+            title: newPrayer,
+            status: 'active' as const,
+            created_at: new Date().toISOString(),
+            user_id: userId
+        };
+        setPrayers([optimisticPrayer, ...prayers]);
+        setIsDialogOpen(false);
+        const prayerTitle = newPrayer;
+        setNewPrayer("");
+        toast.success("Prayer placed on the altar.");
+
         try {
-            const token = await getToken({ template: 'supabase' });
-            if (!token) return;
-            const supabase = createClerkSupabaseClient(token);
-
-            // Optimistic Update
-            const tempId = Math.random().toString();
-            const optimisticPrayer = {
-                id: tempId,
-                title: newPrayer,
-                status: 'active',
-                created_at: new Date().toISOString(),
-                user_id: userId
-            };
-            setPrayers([optimisticPrayer, ...prayers]);
-            setIsDialogOpen(false);
-            setNewPrayer("");
-            toast.success("Prayer placed on the altar.");
-
-            const { data, error } = await supabase
-                .from('prayers')
-                .insert({
-                    user_id: userId,
-                    title: optimisticPrayer.title,
-                    status: 'active'
-                })
-                .select()
-                .single();
-
-            if (data) {
-                // Replace temp ID with real one
-                setPrayers(prev => prev.map(p => p.id === tempId ? data : p));
-
-                // Trigger AI Strategy Generation (Fire & Forget or await)
-                // For MVP, we'll just log or maybe call an edge function here later
-                // await generatePrayerStrategy(data.id);
+            const res = await fetch('/api/prayers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: prayerTitle })
+            });
+            const data = await res.json();
+            if (data.success && data.data) {
+                setPrayers(prev => prev.map(p => p.id === tempId ? data.data : p));
             }
         } catch (error) {
-            toast.error("Failed to add prayer.");
+            console.error("Failed to add prayer:", error);
         }
     };
 
     // Handle Status Change
     const handleStatusChange = async (id: string, newStatus: 'active' | 'answered') => {
-        // Optimistic
         setPrayers(prev => prev.map(p => p.id === id ? { ...p, status: newStatus } : p));
-        if (newStatus === 'answered') toast.success("Praise God! Mark as Answered.");
+        if (newStatus === 'answered') toast.success("Praise God! Marked as Answered.");
 
-        const token = await getToken({ template: 'supabase' });
-        if (!token) return;
-        const supabase = createClerkSupabaseClient(token);
-
-        await supabase.from('prayers').update({ status: newStatus }).eq('id', id);
+        try {
+            await fetch('/api/prayers', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, status: newStatus })
+            });
+        } catch (error) {
+            console.error("Failed to update status:", error);
+        }
     };
 
     // Handle Delete
     const handleDelete = async (id: string) => {
         setPrayers(prev => prev.filter(p => p.id !== id));
+        toast.info("Prayer removed from the altar.");
 
-        const token = await getToken({ template: 'supabase' });
-        if (!token) return;
-        const supabase = createClerkSupabaseClient(token);
-
-        await supabase.from('prayers').delete().eq('id', id);
+        try {
+            await fetch(`/api/prayers?id=${encodeURIComponent(id)}`, {
+                method: 'DELETE'
+            });
+        } catch (error) {
+            console.error("Failed to delete prayer:", error);
+        }
     };
 
     const activePrayers = prayers.filter(p => p.status === 'active');

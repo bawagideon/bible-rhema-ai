@@ -18,11 +18,12 @@ interface StudioWorkspaceProps {
     onSave: () => void;
     onGenerate: () => void;
     isSaving: boolean;
+    isGenerating?: boolean;
 }
 
 type ViewMode = 'write' | 'preview';
 
-export function StudioWorkspace({ data, onChange, onSave, onGenerate, isSaving }: StudioWorkspaceProps) {
+export function StudioWorkspace({ data, onChange, onSave, onGenerate, isSaving, isGenerating = false }: StudioWorkspaceProps) {
     const [viewMode, setViewMode] = useState<ViewMode>('write');
     const [formatSettings, setFormatSettings] = useState<FormatSettingsState>({
         typography: 'serif',
@@ -106,12 +107,13 @@ export function StudioWorkspace({ data, onChange, onSave, onGenerate, isSaving }
                     <div className="relative group">
                         <Button
                             onClick={handleGenerateClick}
+                            disabled={isGenerating}
                             size="sm"
                             className="bg-black text-white hover:bg-gray-800 gap-2 shadow-sm transition-transform active:scale-95 relative overflow-hidden"
                         >
-                            <Sparkles className="h-3.5 w-3.5" />
-                            Generate AI
-                            {userTier !== 'MINISTER' && (
+                            <Sparkles className={cn("h-3.5 w-3.5", isGenerating && "animate-spin text-[#D4AF37]")} />
+                            {isGenerating ? "Generating..." : "Generate AI"}
+                            {userTier !== 'MINISTER' && !isGenerating && (
                                 <div className="absolute inset-0 bg-white/10 backdrop-blur-[1px] flex items-center justify-center">
                                     <div className="bg-[#D4AF37] p-1 rounded-full"><div className="h-2 w-2 bg-black rounded-full" /></div>
                                 </div>
@@ -142,8 +144,9 @@ export function StudioWorkspace({ data, onChange, onSave, onGenerate, isSaving }
                                 data={data}
                                 onChange={onChange}
                                 onGenerate={onGenerate}
-                                onSave={onSave} // Passed down but unused in UI directly
+                                onSave={onSave}
                                 isSaving={isSaving}
+                                isGenerating={isGenerating}
                             />
                         </motion.div>
                     ) : (

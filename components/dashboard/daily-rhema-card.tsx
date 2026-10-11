@@ -24,9 +24,10 @@ interface DailyRhemaCardProps {
     className?: string;
     // Optional props for optimistic updates or initial data
     initialData?: DailyRhema;
+    heroMode?: boolean;
 }
 
-export function DailyRhemaCard({ className, initialData }: DailyRhemaCardProps) {
+export function DailyRhemaCard({ className, initialData, heroMode = false }: DailyRhemaCardProps) {
     const { userTier } = useRhema();
     const { getToken } = useAuth();
     // const supabase = useClerkSupabaseClient(); // Removed
@@ -46,28 +47,21 @@ export function DailyRhemaCard({ className, initialData }: DailyRhemaCardProps) 
     const checkDailyRhema = async () => {
         try {
             setLoading(true);
-            const token = await getToken({ template: 'supabase' });
-            if (!token) {
-                // If not logged in, maybe show generic or return
-                setLoading(false);
-                return;
-            }
-            const supabase = createClerkSupabaseClient(token);
-
-            const today = new Date().toISOString().split('T')[0];
-            const { data: existing, error } = await supabase
-                .from('daily_rhema')
-                .select('*')
-                .eq('date', today)
-                .single();
-
-            if (existing) {
-                setData(existing);
-            } else {
-                await generateRhema(token); // Pass token to avoid re-fetching
+            const res = await fetch('/api/daily-rhema');
+            const resData = await res.json();
+            if (resData.success && resData.data) {
+                setData(resData.data);
             }
         } catch (error) {
             console.error("Error fetching daily rhema:", error);
+            // Default comforting word
+            setData({
+                scripture_text: "The LORD is my shepherd; I shall not want. He makes me lie down in green pastures.",
+                scripture_ref: "Psalm 23:1-2 (ESV)",
+                content: "True peace is not the absence of life's demands, but the presence of the Shepherd walking beside you today.",
+                prayer_focus: "Lord Jesus, lead me beside still waters and restore my soul.",
+                date: new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+            });
         } finally {
             setLoading(false);
         }

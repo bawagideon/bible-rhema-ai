@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -9,9 +10,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 import { ContextManager, ContextItem } from "./context-manager";
 import { TipTapEditor } from "./editor/tiptap-editor";
+import { toast } from "sonner";
 
 export interface SermonData {
     title: string;
@@ -27,10 +28,12 @@ interface SermonBuilderProps {
     onGenerate: () => void;
     onSave: () => void;
     isSaving: boolean;
+    isGenerating?: boolean;
     isViewOnly?: boolean;
 }
 
-export function SermonBuilder({ data, onChange, onGenerate, isSaving }: SermonBuilderProps) {
+export function SermonBuilder({ data, onChange, onGenerate, isSaving, isGenerating = false }: SermonBuilderProps) {
+    const [isAiAssisting, setIsAiAssisting] = useState(false);
 
     // Helper to update fields
     const handleChange = (field: keyof SermonData, value: any) => {
@@ -38,13 +41,32 @@ export function SermonBuilder({ data, onChange, onGenerate, isSaving }: SermonBu
     };
 
     // AI Action Handler (passed to TipTap)
-    const handleAiAction = (action: string, editor: any) => {
-        if (action === 'expand') {
-            editor.commands.insertContent(" (AI Expanding...) ");
-            onGenerate();
-        }
-        else if (action === 'scripture') {
-            editor.commands.insertContent("<blockquote>“Your word is a lamp to my feet...” (Psalm 119:105)</blockquote>");
+    const handleAiAction = async (action: string, editor: any) => {
+        setIsAiAssisting(true);
+        toast.info(`Applying AI Assist: ${action}...`);
+        try {
+            const { from, to } = editor.state.selection;
+            const selectedText = editor.state.doc.textBetween(from, to, ' ');
+            const contextText = selectedText || editor.getText().slice(-300) || data.title || "The Word of God";
+
+            const res = await fetch('/api/studio/assist', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, text: contextText })
+            });
+
+            const resData = await res.json();
+            if (resData.success && resData.content) {
+                editor.commands.insertContent(" " + resData.content);
+                toast.success(`AI Assist: ${action} applied!`);
+            } else {
+                toast.error("AI Assist was unable to complete.");
+            }
+        } catch (e) {
+            console.error("AI Assist failed:", e);
+            toast.error("Failed to connect to AI Assist.");
+        } finally {
+            setIsAiAssisting(false);
         }
     };
 
@@ -58,7 +80,7 @@ export function SermonBuilder({ data, onChange, onGenerate, isSaving }: SermonBu
                         <div className="space-y-2">
                             <Label className="text-xs font-bold uppercase text-gray-500">Topic / Title</Label>
                             <Input
-                                placeholder="Sermon Title"
+                                placeholder="e.g. The Weight of Glory"
                                 value={data.title}
                                 onChange={(e) => handleChange("title", e.target.value)}
                                 className="bg-white"
@@ -67,7 +89,7 @@ export function SermonBuilder({ data, onChange, onGenerate, isSaving }: SermonBu
                         <div className="space-y-2">
                             <Label className="text-xs font-bold uppercase text-gray-500">Key Scripture</Label>
                             <Input
-                                placeholder="e.g. John 3:16"
+                                placeholder="e.g. 2 Corinthians 4:17"
                                 value={data.scripture}
                                 onChange={(e) => handleChange("scripture", e.target.value)}
                                 className="bg-white"
@@ -85,8 +107,9 @@ export function SermonBuilder({ data, onChange, onGenerate, isSaving }: SermonBu
                                 <SelectContent>
                                     <SelectItem value="Theological">Theological</SelectItem>
                                     <SelectItem value="Evangelistic">Evangelistic</SelectItem>
-                                    <SelectItem value="Teaching">Teaching</SelectItem>
-                                    <SelectItem value="Encouraging">Encouraging</SelectItem>
+                                    <SelectItem value="Expository">Expository</SelectItem>
+                                    <SelectItem value="Pastoral">Pastoral</SelectItem>
+                                    <SelectItem value="Prophetic">Prophetic</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -115,7 +138,7 @@ export function SermonBuilder({ data, onChange, onGenerate, isSaving }: SermonBu
                     content={data.notes}
                     onChange={(html) => handleChange("notes", html)}
                     onAiAction={handleAiAction}
-                    isAiLoading={isSaving} // Reuse saving state for now
+                    isAiLoading={isAiAssisting || isGenerating}
                 />
             </div>
         </div>
