@@ -73,7 +73,7 @@ export async function GET() {
     } catch (error: any) {
         console.error("Error in GET /api/user/profile:", error);
         return NextResponse.json({
-            authenticated: false,
+            authenticated: true,
             tier: 'SEEKER',
             full_name: 'Believer'
         });

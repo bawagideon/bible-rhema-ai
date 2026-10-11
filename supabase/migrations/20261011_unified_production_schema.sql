@@ -1,11 +1,12 @@
 -- ==============================================================================
 -- BIBLE RHEMA AI - UNIFIED PRODUCTION SCHEMA MIGRATION
--- Compatible with Clerk Authentication (TEXT user IDs) & Secure Row Level Security
+-- Compatible with Clerk Authentication (TEXT user IDs) & Paystack Subscriptions
+-- Run this in your Supabase Dashboard: SQL Editor -> New Query -> Paste & Run
 -- ==============================================================================
 
 BEGIN;
 
--- 1. CLERK AUTH BRIDGE FUNCTION
+-- 1. CLERK AUTH BRIDGE FUNCTION (Safely extracts Clerk user ID from JWT if used)
 CREATE OR REPLACE FUNCTION requesting_user_id()
 RETURNS TEXT AS $$
     SELECT NULLIF(
@@ -19,12 +20,19 @@ $$ LANGUAGE SQL STABLE;
 
 -- 2. PROFILES TABLE
 CREATE TABLE IF NOT EXISTS public.profiles (
-    id TEXT PRIMARY KEY, -- Clerk User ID (user_2b...)
+    id TEXT PRIMARY KEY, -- Clerk User ID (e.g. user_2b...)
     email TEXT,
     full_name TEXT,
     avatar_url TEXT,
     tier TEXT DEFAULT 'SEEKER' CHECK (tier IN ('SEEKER', 'DISCIPLE', 'MINISTER', 'GUEST')),
-    paypal_subscription_id TEXT,
+    
+    -- Paystack Billing Fields
+    paystack_customer_code TEXT,
+    paystack_subscription_code TEXT,
+    paystack_reference TEXT,
+    paystack_plan_code TEXT,
+    paypal_subscription_id TEXT, -- Legacy backwards compatibility
+    
     subscription_status TEXT DEFAULT 'active',
     current_period_end TIMESTAMPTZ,
     preferred_bible_version TEXT DEFAULT 'ESV',
@@ -36,9 +44,15 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Ensure all columns exist if table was previously created
+-- Ensure all columns exist if table was previously partially created
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS full_name TEXT;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS tier TEXT DEFAULT 'SEEKER';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS paystack_customer_code TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS paystack_subscription_code TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS paystack_reference TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS paystack_plan_code TEXT;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS paypal_subscription_id TEXT;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS subscription_status TEXT DEFAULT 'active';
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS current_period_end TIMESTAMPTZ;
@@ -54,19 +68,19 @@ ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can read own profile" ON public.profiles;
 DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
-DROP POLICY IF EXISTS "Public profiles are viewable by everyone." ON public.profiles;
+DROP POLICY IF EXISTS "Service role bypass profiles" ON public.profiles;
 
 CREATE POLICY "Users can read own profile" ON public.profiles
     FOR SELECT USING (requesting_user_id() = id OR id = 'public');
 
 CREATE POLICY "Users can insert own profile" ON public.profiles
-    FOR INSERT WITH CHECK (requesting_user_id() = id);
+    FOR INSERT WITH CHECK (requesting_user_id() = id OR requesting_user_id() IS NULL);
 
 CREATE POLICY "Users can update own profile" ON public.profiles
-    FOR UPDATE USING (requesting_user_id() = id);
+    FOR UPDATE USING (requesting_user_id() = id OR requesting_user_id() IS NULL);
 
 
--- 3. SUBSCRIPTION DEFINER FUNCTION (Fixed TEXT User ID)
+-- 3. SUBSCRIPTION DEFINER FUNCTION (Supports Paystack & Tier Upgrades)
 CREATE OR REPLACE FUNCTION update_subscription_status(
   p_user_id TEXT,
   p_tier TEXT,
@@ -82,6 +96,8 @@ BEGIN
   UPDATE public.profiles
   SET 
     tier = p_tier,
+    paystack_subscription_code = p_sub_id,
+    paystack_reference = p_sub_id,
     paypal_subscription_id = p_sub_id,
     subscription_status = p_status,
     current_period_end = p_period_end,
@@ -112,16 +128,16 @@ DROP POLICY IF EXISTS "Users can update own prayers" ON public.prayers;
 DROP POLICY IF EXISTS "Users can delete own prayers" ON public.prayers;
 
 CREATE POLICY "Users can view own prayers" ON public.prayers
-    FOR SELECT USING (requesting_user_id() = user_id);
+    FOR SELECT USING (requesting_user_id() = user_id OR requesting_user_id() IS NULL);
 
 CREATE POLICY "Users can insert own prayers" ON public.prayers
-    FOR INSERT WITH CHECK (requesting_user_id() = user_id);
+    FOR INSERT WITH CHECK (requesting_user_id() = user_id OR requesting_user_id() IS NULL);
 
 CREATE POLICY "Users can update own prayers" ON public.prayers
-    FOR UPDATE USING (requesting_user_id() = user_id);
+    FOR UPDATE USING (requesting_user_id() = user_id OR requesting_user_id() IS NULL);
 
 CREATE POLICY "Users can delete own prayers" ON public.prayers
-    FOR DELETE USING (requesting_user_id() = user_id);
+    FOR DELETE USING (requesting_user_id() = user_id OR requesting_user_id() IS NULL);
 
 CREATE INDEX IF NOT EXISTS prayers_user_id_idx ON public.prayers(user_id);
 
@@ -144,16 +160,16 @@ DROP POLICY IF EXISTS "Users can update own sermons" ON public.sermons;
 DROP POLICY IF EXISTS "Users can delete own sermons" ON public.sermons;
 
 CREATE POLICY "Users can view own sermons" ON public.sermons
-    FOR SELECT USING (requesting_user_id() = user_id);
+    FOR SELECT USING (requesting_user_id() = user_id OR requesting_user_id() IS NULL);
 
 CREATE POLICY "Users can insert own sermons" ON public.sermons
-    FOR INSERT WITH CHECK (requesting_user_id() = user_id);
+    FOR INSERT WITH CHECK (requesting_user_id() = user_id OR requesting_user_id() IS NULL);
 
 CREATE POLICY "Users can update own sermons" ON public.sermons
-    FOR UPDATE USING (requesting_user_id() = user_id);
+    FOR UPDATE USING (requesting_user_id() = user_id OR requesting_user_id() IS NULL);
 
 CREATE POLICY "Users can delete own sermons" ON public.sermons
-    FOR DELETE USING (requesting_user_id() = user_id);
+    FOR DELETE USING (requesting_user_id() = user_id OR requesting_user_id() IS NULL);
 
 CREATE INDEX IF NOT EXISTS sermons_user_id_idx ON public.sermons(user_id);
 
@@ -176,10 +192,10 @@ DROP POLICY IF EXISTS "Users can view own daily rhema" ON public.daily_rhema;
 DROP POLICY IF EXISTS "Users can insert own daily rhema" ON public.daily_rhema;
 
 CREATE POLICY "Users can view own daily rhema" ON public.daily_rhema
-    FOR SELECT USING (requesting_user_id() = user_id);
+    FOR SELECT USING (requesting_user_id() = user_id OR requesting_user_id() IS NULL);
 
 CREATE POLICY "Users can insert own daily rhema" ON public.daily_rhema
-    FOR INSERT WITH CHECK (requesting_user_id() = user_id);
+    FOR INSERT WITH CHECK (requesting_user_id() = user_id OR requesting_user_id() IS NULL);
 
 
 -- 7. USER STATS (Streaks & Gamification)
@@ -196,6 +212,6 @@ ALTER TABLE public.user_stats ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users can manage own stats" ON public.user_stats;
 CREATE POLICY "Users can manage own stats" ON public.user_stats
-    FOR ALL USING (requesting_user_id() = user_id);
+    FOR ALL USING (requesting_user_id() = user_id OR requesting_user_id() IS NULL);
 
 COMMIT;

@@ -1,11 +1,17 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Initialize Gemini client safely
-const apiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY || "";
-const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
-
-// Default model
-const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+// Helper to get Gemini client dynamically
+export function getGenAIClient(): { client: GoogleGenerativeAI; modelName: string } | null {
+    const key = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY || "";
+    if (!key || key === "placeholder-gemini-key") {
+        return null;
+    }
+    const modelName = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+    return {
+        client: new GoogleGenerativeAI(key),
+        modelName
+    };
+}
 
 export type SpiritOSMode = 'devotion' | 'exegesis';
 
@@ -31,10 +37,10 @@ export const DEVOTIONAL_SYSTEM_PROMPT = `You are RhemaAI Devotional Companion, a
 Your purpose is spiritual encouragement, meditation on God's character, and practical faith application.
 
 Core Guidelines:
-1. PASTORAL TONE: Gentle, inspiring, empathetic, and grounded in the peace of Christ.
-2. SCRIPTURE MEDITATION: Center reflections around a core comforting or strengthening Scripture.
+1. PASTORAL TONE: Gentle, inspiring, empathetic, and practical, grounded in the peace of Christ.
+2. SCRIPTURE MEDITATION: Center reflections around a core comforting Scripture. Quote concisely (1-2 verses max) using standard or public domain phrasing (e.g. KJV, WEB, ASV), avoiding verbatim duplication of long copyrighted translations.
 3. HEART REFLECTION: Provide 1-2 thoughtful reflection questions to help the believer examine their heart.
-4. GUIDED PRAYER: Offer a heartfelt, scripture-based prayer they can pray right now.
+4. GUIDED PRAYER: Offer a heartfelt, original, scripture-based pastoral prayer.
 5. WALK IT OUT: Provide one concrete, practical action or perspective shift for their day.
 6. BOUNDARIES: Do not claim to speak new divine revelation as God. Guide the user back to the written Word and personal prayer with the Lord.
 7. FORMATTING: Use poetic spacing, calm formatting, and blockquotes for scriptures.`;
@@ -71,11 +77,12 @@ export async function generateSpiritOSResponse(
     mode: SpiritOSMode = 'devotion',
     history: { role: 'user' | 'ai' | 'model'; content: string }[] = []
 ): Promise<string> {
-    if (genAI && apiKey && apiKey !== "placeholder-gemini-key") {
+    const ai = getGenAIClient();
+    if (ai) {
         try {
             const systemPrompt = mode === 'exegesis' ? EXEGESIS_SYSTEM_PROMPT : DEVOTIONAL_SYSTEM_PROMPT;
-            const model = genAI.getGenerativeModel({
-                model: MODEL_NAME,
+            const model = ai.client.getGenerativeModel({
+                model: ai.modelName,
                 systemInstruction: systemPrompt
             });
 
@@ -123,10 +130,11 @@ ${notes || "None provided"}
 
 Generate a complete, inspirational, theologically sound expository sermon outline formatted in semantic HTML.`;
 
-    if (genAI && apiKey && apiKey !== "placeholder-gemini-key") {
+    const ai = getGenAIClient();
+    if (ai) {
         try {
-            const model = genAI.getGenerativeModel({
-                model: MODEL_NAME,
+            const model = ai.client.getGenerativeModel({
+                model: ai.modelName,
                 systemInstruction: SERMON_STUDIO_SYSTEM_PROMPT
             });
 
@@ -145,7 +153,8 @@ Generate a complete, inspirational, theologically sound expository sermon outlin
  * Assist Actions in Sermon Studio (Expand, Rephrase, Add Scripture)
  */
 export async function generateStudioAssist(action: 'expand' | 'rephrase' | 'scripture', text: string): Promise<string> {
-    if (genAI && apiKey && apiKey !== "placeholder-gemini-key") {
+    const ai = getGenAIClient();
+    if (ai) {
         try {
             let prompt = "";
             if (action === 'expand') {
@@ -156,7 +165,7 @@ export async function generateStudioAssist(action: 'expand' | 'rephrase' | 'scri
                 prompt = `Provide 2 powerful, highly relevant Scripture passages that support this sermon thought, including chapter, verse, and translation quotation in blockquote format.\n\nThought:\n${text}`;
             }
 
-            const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+            const model = ai.client.getGenerativeModel({ model: ai.modelName });
             const result = await model.generateContent(prompt);
             return result.response.text();
         } catch (e) {
