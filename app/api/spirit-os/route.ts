@@ -72,52 +72,56 @@ export async function POST(req: NextRequest) {
         const userTier = profile?.tier || 'SEEKER';
         const preferredVersion = profile?.preferred_bible_version || 'ESV';
 
-        // 6. Enforce Seeker Tier Daily Quota (Max 10 studies/day)
+        // 6. Enforce Seeker Tier Daily Quota Atomically (Max 10 studies/day)
+        let quotaReserved = false;
         if (userTier === 'SEEKER') {
-            const todayStr = new Date().toISOString().split('T')[0];
-            const { data: usageData, error: usageErr } = await supabase
-                .from('user_daily_usage')
-                .select('query_count')
-                .eq('user_id', userId)
-                .eq('usage_date', todayStr)
-                .maybeSingle();
+            const { data: quotaResult, error: quotaErr } = await supabase.rpc('reserve_query_quota', {
+                p_user_id: userId,
+                p_limit: 10
+            });
 
-            if (!usageErr && usageData && (usageData.query_count >= 10)) {
+            if (!quotaErr && quotaResult && quotaResult.allowed === false) {
                 return NextResponse.json({
                     error: "Daily study limit reached (10 queries/day on Seeker tier). Upgrade your plan to Disciple for unlimited SpiritOS studies.",
                     limitExceeded: true,
-                    currentCount: usageData.query_count,
+                    currentCount: quotaResult.count,
                     tier: userTier
                 }, { status: 429 });
             }
+            quotaReserved = true;
         }
 
         // 7. Generate Real Grounded Stream with Native Model Streaming
-        const { stream, context } = await streamSpiritOSStudy(
-            query.trim(),
-            selectedMode,
-            safeHistory,
-            preferredVersion
-        );
+        let streamResult;
+        try {
+            streamResult = await streamSpiritOSStudy(
+                query.trim(),
+                selectedMode,
+                safeHistory,
+                preferredVersion
+            );
+        } catch (genError) {
+            // Refund reserved quota if generation failed before delivering stream
+            if (quotaReserved) {
+                try {
+                    await supabase.rpc('refund_query_quota', { p_user_id: userId });
+                } catch {
+                    // Suppress cleanup error
+                }
+            }
+            throw genError;
+        }
 
-        // 8. Wrap stream in TransformStream to record activity & usage strictly on successful completion
-        const todayStr = new Date().toISOString().split('T')[0];
+        const { stream, context } = streamResult;
+
+        // 8. Wrap stream in TransformStream to record streak activity strictly on successful completion
         const activityTransformStream = new TransformStream({
             transform(chunk, controller) {
                 controller.enqueue(chunk);
             },
             async flush() {
                 try {
-                    await Promise.allSettled([
-                        recordUserActivity(userId),
-                        supabase.rpc('increment_query_usage', { p_user_id: userId }),
-                        supabase
-                            .from('user_daily_usage')
-                            .upsert(
-                                { user_id: userId, usage_date: todayStr, query_count: 1 },
-                                { onConflict: 'user_id,usage_date' }
-                            )
-                    ]);
+                    await recordUserActivity(userId);
                 } catch (e) {
                     console.error("Failed to record activity on stream completion:", e);
                 }

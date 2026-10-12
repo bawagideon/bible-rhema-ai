@@ -11,7 +11,7 @@ const ALLOWED_ORIGINS = [
 
 function getCorsHeaders(req: Request) {
     const origin = req.headers.get("origin") || "";
-    const isAllowed = ALLOWED_ORIGINS.includes(origin) || origin.endsWith(".vercel.app");
+    const isAllowed = ALLOWED_ORIGINS.includes(origin);
     return {
         'Access-Control-Allow-Origin': isAllowed ? origin : ALLOWED_ORIGINS[0],
         'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -36,14 +36,36 @@ Deno.serve(async (req) => {
             });
         }
 
+        const token = authHeader.replace('Bearer ', '').trim();
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+        const isServiceRole = Boolean(serviceRoleKey && token === serviceRoleKey);
+
+        let userId: string | null = null;
+
+        if (!isServiceRole) {
+            const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+            const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+                auth: { persistSession: false }
+            });
+
+            const { data: userData, error: userError } = await authClient.auth.getUser(token);
+            if (userError || !userData?.user?.id) {
+                return new Response(JSON.stringify({ error: "Unauthorized: Invalid or unverified token" }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                    status: 401,
+                });
+            }
+            userId = userData.user.id;
+        }
+
         const { query } = await req.json();
         if (!query || typeof query !== 'string' || !query.trim()) {
             throw new Error('Valid query string is required');
         }
 
         // 1. Init Clients
-        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_ANON_KEY')!;
+        const supabaseKey = serviceRoleKey || Deno.env.get('SUPABASE_ANON_KEY')!;
         const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY')!;
 
         const supabase = createClient(supabaseUrl, supabaseKey);
@@ -56,24 +78,13 @@ Deno.serve(async (req) => {
 
         // 2a. Fetch User Profile for Context
         let userProfile = null;
-        if (authHeader) {
-            try {
-                // Manually decode Clerk JWT to get 'sub' (User ID)
-                const token = authHeader.replace('Bearer ', '');
-                const payload = JSON.parse(atob(token.split('.')[1]));
-                const userId = payload.sub;
-
-                if (userId) {
-                    const { data: profile } = await supabase
-                        .from('profiles')
-                        .select('spiritual_goals, struggles, favorite_ministers, preferred_bible_version, denominational_bias')
-                        .eq('id', userId)
-                        .single();
-                    userProfile = profile;
-                }
-            } catch (e) {
-                console.error("Context auth error (Guest Mode):", e);
-            }
+        if (userId) {
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('spiritual_goals, struggles, favorite_ministers, preferred_bible_version, denominational_bias')
+                .eq('id', userId)
+                .maybeSingle();
+            userProfile = profile;
         }
 
         // 3. Match Documents

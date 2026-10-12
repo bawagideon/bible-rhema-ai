@@ -17,6 +17,15 @@ RETURNS TEXT AS $$
     )::text;
 $$ LANGUAGE SQL STABLE;
 
+CREATE OR REPLACE FUNCTION is_service_role()
+RETURNS BOOLEAN AS $$
+    SELECT COALESCE(
+        current_setting('role', true) = 'service_role',
+        current_setting('request.jwt.claim.role', true) = 'service_role',
+        current_user IN ('postgres', 'service_role', 'supabase_admin')
+    );
+$$ LANGUAGE SQL STABLE;
+
 -- 2. DYNAMIC PURGE OF ALL LEGACY RLS POLICIES ON APPLICATION TABLES
 -- Eliminates any possibility of surviving permissive OR policies
 DO $$
@@ -168,13 +177,24 @@ DECLARE
     v_status TEXT;
     v_caller TEXT;
 BEGIN
-    v_caller := requesting_user_id();
-    IF v_caller IS NULL THEN
-        RAISE EXCEPTION 'UNAUTHENTICATED: Caller identity is missing or unverified';
+    IF p_user_id IS NULL OR trim(p_user_id) = '' THEN
+        RAISE EXCEPTION 'INVALID_ARGUMENT: User ID cannot be null or empty';
     END IF;
 
-    IF v_caller <> p_user_id THEN
-        RAISE EXCEPTION 'UNAUTHORIZED: Caller ID % does not match target user ID %', v_caller, p_user_id;
+    IF p_prayer_id IS NULL THEN
+        RAISE EXCEPTION 'INVALID_ARGUMENT: Prayer ID cannot be null';
+    END IF;
+
+    -- If caller is not service_role, enforce requesting_user_id matches p_user_id
+    IF NOT is_service_role() THEN
+        v_caller := requesting_user_id();
+        IF v_caller IS NULL THEN
+            RAISE EXCEPTION 'UNAUTHENTICATED: Caller identity is missing or unverified';
+        END IF;
+
+        IF v_caller <> p_user_id THEN
+            RAISE EXCEPTION 'UNAUTHORIZED: Caller ID % does not match target user ID %', v_caller, p_user_id;
+        END IF;
     END IF;
 
     SELECT is_community, status INTO v_is_community, v_status
@@ -304,11 +324,12 @@ CREATE TABLE IF NOT EXISTS public.daily_rhema (
 );
 
 -- Safely reconcile duplicates before establishing unique constraint
-DELETE FROM public.daily_rhema a
-USING public.daily_rhema b
-WHERE a.id > b.id
-  AND a.user_id = b.user_id
-  AND a.date = b.date;
+DELETE FROM public.daily_rhema
+WHERE id NOT IN (
+    SELECT DISTINCT ON (user_id, date) id
+    FROM public.daily_rhema
+    ORDER BY user_id, date, created_at DESC
+);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_rhema_user_date ON public.daily_rhema(user_id, date);
 
@@ -342,7 +363,7 @@ CREATE POLICY "user_stats_update_own" ON public.user_stats
     FOR UPDATE USING (requesting_user_id() IS NOT NULL AND requesting_user_id() = user_id);
 
 -- CONCURRENCY-SAFE ATOMIC USER ACTIVITY RPC
-CREATE OR REPLACE FUNCTION public.record_atomic_user_activity(p_user_id TEXT, p_today DATE)
+CREATE OR REPLACE FUNCTION public.record_atomic_user_activity(p_user_id TEXT, p_today DATE DEFAULT NULL)
 RETURNS TABLE (prayer_streak_days INT, longest_streak_days INT, last_active_date DATE)
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -350,10 +371,22 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
     v_stats public.user_stats%ROWTYPE;
+    v_today DATE := COALESCE(p_today, CURRENT_DATE);
     v_diff INT;
     v_new_streak INT;
     v_new_longest INT;
 BEGIN
+    IF p_user_id IS NULL OR trim(p_user_id) = '' THEN
+        RAISE EXCEPTION 'INVALID_ARGUMENT: User ID cannot be null or empty';
+    END IF;
+
+    -- If caller is not service_role, enforce requesting_user_id matches p_user_id
+    IF NOT is_service_role() THEN
+        IF requesting_user_id() IS NULL OR requesting_user_id() <> p_user_id THEN
+            RAISE EXCEPTION 'UNAUTHORIZED: Cannot record activity for another user';
+        END IF;
+    END IF;
+
     SELECT * INTO v_stats
     FROM public.user_stats
     WHERE user_id = p_user_id
@@ -363,7 +396,7 @@ BEGIN
         INSERT INTO public.user_stats (
             user_id, prayer_streak_days, longest_streak_days, last_active_date
         ) VALUES (
-            p_user_id, 1, 1, p_today
+            p_user_id, 1, 1, v_today
         )
         RETURNING * INTO v_stats;
 
@@ -371,12 +404,12 @@ BEGIN
         RETURN;
     END IF;
 
-    IF v_stats.last_active_date = p_today THEN
+    IF v_stats.last_active_date = v_today THEN
         RETURN QUERY SELECT v_stats.prayer_streak_days, v_stats.longest_streak_days, v_stats.last_active_date;
         RETURN;
     END IF;
 
-    v_diff := p_today - v_stats.last_active_date;
+    v_diff := v_today - v_stats.last_active_date;
 
     IF v_diff = 1 THEN
         v_new_streak := COALESCE(v_stats.prayer_streak_days, 0) + 1;
@@ -390,7 +423,7 @@ BEGIN
     SET
         prayer_streak_days = v_new_streak,
         longest_streak_days = v_new_longest,
-        last_active_date = p_today
+        last_active_date = v_today
     WHERE user_id = p_user_id
     RETURNING * INTO v_stats;
 
@@ -398,8 +431,8 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.record_atomic_user_activity(TEXT, DATE) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.record_atomic_user_activity(TEXT, DATE) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.record_atomic_user_activity(TEXT, DATE) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.record_atomic_user_activity(TEXT, DATE) TO service_role;
 
 -- 10. PAYMENT TRANSACTIONS AUDIT TABLE & ATOMIC FULFILLMENT
 CREATE TABLE IF NOT EXISTS public.payment_transactions (
@@ -441,6 +474,27 @@ AS $$
 DECLARE
     v_tx public.payment_transactions%ROWTYPE;
 BEGIN
+    -- Strict input validation
+    IF p_reference IS NULL OR trim(p_reference) = '' THEN
+        RAISE EXCEPTION 'INVALID_ARGUMENT: Payment reference cannot be null or empty';
+    END IF;
+
+    IF p_user_id IS NULL OR trim(p_user_id) = '' THEN
+        RAISE EXCEPTION 'INVALID_ARGUMENT: User ID cannot be null or empty';
+    END IF;
+
+    IF p_tier NOT IN ('DISCIPLE', 'MINISTER') THEN
+        RAISE EXCEPTION 'INVALID_TIER: Permitted tiers are DISCIPLE or MINISTER, received %', p_tier;
+    END IF;
+
+    IF p_billing_cycle NOT IN ('monthly', 'yearly') THEN
+        RAISE EXCEPTION 'INVALID_CYCLE: Permitted billing cycles are monthly or yearly, received %', p_billing_cycle;
+    END IF;
+
+    IF p_amount_kobo IS NULL OR p_amount_kobo <= 0 THEN
+        RAISE EXCEPTION 'INVALID_AMOUNT: Payment amount in kobo must be positive, received %', p_amount_kobo;
+    END IF;
+
     -- Advisory lock serializes concurrent attempts on this exact payment reference
     PERFORM pg_advisory_xact_lock(hashtext('paystack_ref_' || p_reference));
 
@@ -505,8 +559,8 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.fulfill_subscription_payment FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.fulfill_subscription_payment TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.fulfill_subscription_payment FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.fulfill_subscription_payment TO service_role;
 
 -- 11. VECTOR DOCUMENTS TABLE ACCESS HARDENING (Explicit Canonical Distinction)
 DO $$
@@ -537,7 +591,8 @@ ALTER TABLE public.user_daily_usage ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "user_daily_usage_own" ON public.user_daily_usage
     FOR ALL USING (requesting_user_id() IS NOT NULL AND requesting_user_id() = user_id);
 
-CREATE OR REPLACE FUNCTION public.check_query_quota(
+-- ATOMIC, CONCURRENCY-SAFE QUOTA RESERVATION RPC
+CREATE OR REPLACE FUNCTION public.reserve_query_quota(
     p_user_id TEXT,
     p_limit INT DEFAULT 10
 )
@@ -548,27 +603,52 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
     v_today DATE := CURRENT_DATE;
-    v_count INT := 0;
+    v_current_count INT;
 BEGIN
-    SELECT query_count INTO v_count
+    IF p_user_id IS NULL OR trim(p_user_id) = '' THEN
+        RAISE EXCEPTION 'INVALID_ARGUMENT: User ID cannot be null or empty';
+    END IF;
+
+    -- Ensure row exists for today
+    INSERT INTO public.user_daily_usage (user_id, usage_date, query_count)
+    VALUES (p_user_id, v_today, 0)
+    ON CONFLICT (user_id, usage_date) DO NOTHING;
+
+    -- Serialize concurrent reservation attempts using row-level lock
+    SELECT query_count INTO v_current_count
     FROM public.user_daily_usage
-    WHERE user_id = p_user_id AND usage_date = v_today;
+    WHERE user_id = p_user_id AND usage_date = v_today
+    FOR UPDATE;
 
-    IF v_count IS NULL THEN
-        v_count := 0;
+    IF v_current_count IS NULL THEN
+        v_current_count := 0;
     END IF;
 
-    IF p_limit > 0 AND v_count >= p_limit THEN
-        RETURN jsonb_build_object('allowed', false, 'count', v_count, 'limit', p_limit);
+    -- Quota check: if limit > 0 and count has already reached limit
+    IF p_limit > 0 AND v_current_count >= p_limit THEN
+        RETURN jsonb_build_object(
+            'allowed', false,
+            'count', v_current_count,
+            'limit', p_limit
+        );
     END IF;
 
-    RETURN jsonb_build_object('allowed', true, 'count', v_count, 'limit', p_limit);
+    -- Atomically increment and reserve slot
+    UPDATE public.user_daily_usage
+    SET query_count = query_count + 1
+    WHERE user_id = p_user_id AND usage_date = v_today
+    RETURNING query_count INTO v_current_count;
+
+    RETURN jsonb_build_object(
+        'allowed', true,
+        'count', v_current_count,
+        'limit', p_limit
+    );
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION public.increment_query_usage(
-    p_user_id TEXT
-)
+-- ATOMIC QUOTA REFUND RPC (For aborted or failed streams)
+CREATE OR REPLACE FUNCTION public.refund_query_quota(p_user_id TEXT)
 RETURNS INT
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -576,23 +656,26 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
     v_today DATE := CURRENT_DATE;
-    v_new_count INT;
+    v_count INT;
 BEGIN
-    INSERT INTO public.user_daily_usage (user_id, usage_date, query_count)
-    VALUES (p_user_id, v_today, 1)
-    ON CONFLICT (user_id, usage_date)
-    DO UPDATE SET query_count = public.user_daily_usage.query_count + 1
-    RETURNING query_count INTO v_new_count;
+    IF p_user_id IS NULL OR trim(p_user_id) = '' THEN
+        RETURN 0;
+    END IF;
 
-    RETURN v_new_count;
+    UPDATE public.user_daily_usage
+    SET query_count = GREATEST(0, query_count - 1)
+    WHERE user_id = p_user_id AND usage_date = v_today
+    RETURNING query_count INTO v_count;
+
+    RETURN COALESCE(v_count, 0);
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.check_query_quota(TEXT, INT) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.check_query_quota(TEXT, INT) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.reserve_query_quota(TEXT, INT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.reserve_query_quota(TEXT, INT) TO service_role;
 
-REVOKE ALL ON FUNCTION public.increment_query_usage(TEXT) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.increment_query_usage(TEXT) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.refund_query_quota(TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.refund_query_quota(TEXT) TO service_role;
 
 -- 13. COMPREHENSIVE SQL PRIVILEGES RECONCILIATION
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon;

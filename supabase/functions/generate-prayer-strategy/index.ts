@@ -10,7 +10,7 @@ const ALLOWED_ORIGINS = [
 
 function getCorsHeaders(req: Request) {
     const origin = req.headers.get("origin") || "";
-    const isAllowed = ALLOWED_ORIGINS.includes(origin) || origin.endsWith(".vercel.app");
+    const isAllowed = ALLOWED_ORIGINS.includes(origin);
     return {
         'Access-Control-Allow-Origin': isAllowed ? origin : ALLOWED_ORIGINS[0],
         'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -29,23 +29,33 @@ serve(async (req) => {
     try {
         const authHeader = req.headers.get('Authorization');
         if (!authHeader) {
-            return new Response(JSON.stringify({ error: "Unauthorized: Authorization required" }), {
+            return new Response(JSON.stringify({ error: "Unauthorized: Authorization header required" }), {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                 status: 401,
             });
         }
 
-        // Extract user id from token payload if JWT
+        const token = authHeader.replace('Bearer ', '').trim();
+        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+        const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+        const isServiceRole = Boolean(serviceRoleKey && token === serviceRoleKey);
+
         let callingUserId: string | null = null;
-        try {
-            const token = authHeader.replace('Bearer ', '').trim();
-            const parts = token.split('.');
-            if (parts.length === 3) {
-                const payload = JSON.parse(atob(parts[1]));
-                callingUserId = payload.sub || payload.userId || null;
+
+        if (!isServiceRole) {
+            const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+            const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+                auth: { persistSession: false }
+            });
+
+            const { data: userData, error: userError } = await authClient.auth.getUser(token);
+            if (userError || !userData?.user?.id) {
+                return new Response(JSON.stringify({ error: "Unauthorized: Invalid or unverified token" }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                    status: 401,
+                });
             }
-        } catch {
-            // Service role or custom bearer format
+            callingUserId = userData.user.id;
         }
 
         const { prayer_id, request_text, user_profile } = await req.json();
@@ -56,12 +66,9 @@ serve(async (req) => {
             });
         }
 
-        // Initialize Supabase
-        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-        const supabase = createClient(supabaseUrl, supabaseKey);
+        const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-        // Verify caller ownership if calling as user
+        // Verify caller ownership for authenticated user
         if (callingUserId) {
             const { data: existingPrayer, error: checkError } = await supabase
                 .from('prayers')
@@ -82,6 +89,11 @@ serve(async (req) => {
                     status: 403,
                 });
             }
+        } else if (!isServiceRole) {
+            return new Response(JSON.stringify({ error: "Unauthorized: Missing verified user identity" }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                status: 401,
+            });
         }
 
         console.log(`Generating strategy for prayer: ${prayer_id}`);
