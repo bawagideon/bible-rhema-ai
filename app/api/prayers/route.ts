@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { recordUserActivity } from "@/lib/activity";
 
 export const dynamic = 'force-dynamic';
-
-function getSupabaseServerClient() {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-url.supabase.co';
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
-    return createClient(supabaseUrl, serviceRoleKey);
-}
 
 export async function GET(req: NextRequest) {
     try {
@@ -19,23 +14,23 @@ export async function GET(req: NextRequest) {
         const supabase = getSupabaseServerClient();
 
         if (feed === "community") {
-            // Fetch public community prayers
+            // Fetch public community prayers with privacy-safe field selection
             const { data, error } = await supabase
                 .from('prayers')
-                .select('*')
+                .select('id, title, description, is_community, author_name, status, prayed_count, scripture_ref, created_at, answered_at, testimony')
                 .eq('is_community', true)
                 .order('created_at', { ascending: false })
                 .limit(50);
 
             if (error) {
                 console.error("Community prayers fetch error:", error);
-                return NextResponse.json({ success: true, data: [] });
+                return NextResponse.json({ success: false, error: error.message }, { status: 500 });
             }
 
             return NextResponse.json({ success: true, data: data || [] });
         }
 
-        // Default: Fetch user's own private and authored prayers
+        // Default: Fetch user's own prayers
         if (!userId) {
             return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
         }
@@ -48,12 +43,13 @@ export async function GET(req: NextRequest) {
 
         if (error) {
             console.error("User prayers fetch error:", error);
-            return NextResponse.json({ success: true, data: [] });
+            return NextResponse.json({ success: false, error: error.message }, { status: 500 });
         }
 
         return NextResponse.json({ success: true, data: data || [] });
     } catch (e: any) {
-        return NextResponse.json({ success: true, data: [] });
+        console.error("Error in GET /api/prayers:", e);
+        return NextResponse.json({ success: false, error: e.message || "Failed to fetch prayers" }, { status: 500 });
     }
 }
 
@@ -76,8 +72,16 @@ export async function POST(req: NextRequest) {
             scripture_ref
         } = body;
 
-        if (!title || !title.trim()) {
-            return NextResponse.json({ success: false, error: "Title is required" }, { status: 400 });
+        if (!title || typeof title !== 'string' || !title.trim()) {
+            return NextResponse.json({ success: false, error: "Prayer title is required" }, { status: 400 });
+        }
+
+        if (title.length > 300) {
+            return NextResponse.json({ success: false, error: "Prayer title cannot exceed 300 characters" }, { status: 400 });
+        }
+
+        if (description && typeof description === 'string' && description.length > 3000) {
+            return NextResponse.json({ success: false, error: "Prayer description cannot exceed 3000 characters" }, { status: 400 });
         }
 
         const supabase = getSupabaseServerClient();
@@ -91,21 +95,23 @@ export async function POST(req: NextRequest) {
                 email: clerkUser?.emailAddresses?.[0]?.emailAddress || ''
             }, { onConflict: 'id', ignoreDuplicates: true });
 
-        const displayName = author_name || (clerkUser?.firstName ? `${clerkUser.firstName} ${clerkUser.lastName?.[0] ? clerkUser.lastName[0] + '.' : ''}` : 'Fellow Believer');
+        // Sanitize author name
+        const safeAuthorName = (author_name && typeof author_name === 'string')
+            ? author_name.slice(0, 50).trim()
+            : (clerkUser?.firstName ? `${clerkUser.firstName} ${clerkUser.lastName?.[0] ? clerkUser.lastName[0] + '.' : ''}` : 'Fellow Believer');
 
         const { data, error } = await supabase
             .from('prayers')
             .insert({
                 user_id: userId,
                 title: title.trim(),
-                description: description || null,
+                description: description ? description.trim() : null,
                 is_community: Boolean(is_community),
-                author_name: displayName,
+                author_name: safeAuthorName,
                 status: 'active',
                 ai_strategy: ai_strategy || null,
                 scripture_ref: scripture_ref || null,
-                prayed_count: 0,
-                intercessors: []
+                prayed_count: 0
             })
             .select()
             .single();
@@ -115,9 +121,13 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ success: false, error: error.message }, { status: 500 });
         }
 
+        // Record user activity for streak
+        await recordUserActivity(userId);
+
         return NextResponse.json({ success: true, data });
     } catch (e: any) {
-        return NextResponse.json({ success: false, error: e.message }, { status: 500 });
+        console.error("Error in POST /api/prayers:", e);
+        return NextResponse.json({ success: false, error: e.message || "Failed to create prayer" }, { status: 500 });
     }
 }
 
@@ -132,21 +142,24 @@ export async function PATCH(req: NextRequest) {
         const body = await req.json();
         const { id, status, testimony } = body;
 
-        if (!id) {
-            return NextResponse.json({ success: false, error: "Prayer ID required" }, { status: 400 });
+        if (!id || typeof id !== 'string') {
+            return NextResponse.json({ success: false, error: "Valid prayer ID required" }, { status: 400 });
         }
 
         const supabase = getSupabaseServerClient();
 
         const updates: any = {};
         if (status) {
+            if (!['active', 'answered', 'archived'].includes(status)) {
+                return NextResponse.json({ success: false, error: "Invalid status value" }, { status: 400 });
+            }
             updates.status = status;
             if (status === 'answered') {
                 updates.answered_at = new Date().toISOString();
             }
         }
         if (testimony !== undefined) {
-            updates.testimony = testimony;
+            updates.testimony = typeof testimony === 'string' ? testimony.slice(0, 3000) : null;
         }
 
         const { data, error } = await supabase
@@ -178,8 +191,8 @@ export async function DELETE(req: NextRequest) {
         const url = new URL(req.url);
         const id = url.searchParams.get("id");
 
-        if (!id) {
-            return NextResponse.json({ success: false, error: "Prayer ID required" }, { status: 400 });
+        if (!id || typeof id !== 'string') {
+            return NextResponse.json({ success: false, error: "Valid prayer ID required" }, { status: 400 });
         }
 
         const supabase = getSupabaseServerClient();

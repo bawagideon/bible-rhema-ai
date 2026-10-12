@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { BrandLogo } from "@/components/brand/brand-logo";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     ArrowLeft,
@@ -74,7 +75,7 @@ export default function SanctuaryPage() {
     const [showGuidance, setShowGuidance] = useState(true);
     const [timerMinutes, setTimerMinutes] = useState<number>(10);
     const [secondsRemaining, setSecondsRemaining] = useState<number>(600);
-    const [isTimerRunning, setIsTimerRunning] = useState(true);
+    const [isTimerRunning, setIsTimerRunning] = useState(false);
 
     const { isPlaying, currentTrackId, currentTrack, volume, togglePlay, playTrack, setVolume } = useAudio();
 
@@ -143,14 +144,7 @@ export default function SanctuaryPage() {
                     </Link>
                     <div className="h-4 w-px bg-white/10 hidden sm:block" />
                     <Link href="/" className="hidden sm:flex items-center">
-                        <Image
-                            src="/files/bible-rhema-ai-logo-horizontal.png"
-                            alt="Bible Rhema AI"
-                            width={130}
-                            height={28}
-                            className="object-contain h-6 w-auto"
-                            priority
-                        />
+                        <BrandLogo variant="primary" />
                     </Link>
                 </div>
 

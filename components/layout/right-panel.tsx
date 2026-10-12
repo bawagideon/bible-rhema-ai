@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 
 export function RightPanel() {
     const pathname = usePathname();
-    const { isRightPanelOpen, toggleRightPanel, setSermonToLoad, triggerPdfExport, lastSavedTimestamp, activeStudyContext } = useRhema();
+    const { isRightPanelOpen, toggleRightPanel, setSermonToLoad, triggerPdfExport, lastSavedTimestamp, activeStudyContext, triggerStudyQuery } = useRhema();
     const [sermons, setSermons] = useState<SavedSermon[]>([]);
     const [loadingSermons, setLoadingSermons] = useState(false);
 
@@ -93,10 +93,17 @@ export function RightPanel() {
                                     </h3>
                                     <div className="space-y-2">
                                         {activeStudyContext.crossReferences.map((ref, i) => (
-                                            <div key={i} className="p-3 rounded-lg bg-card/20 border border-border/40 hover:border-[#D4AF37]/30 transition-colors space-y-1">
-                                                <span className="font-serif font-semibold text-xs text-[#D4AF37] block">
-                                                    {ref.reference}
-                                                </span>
+                                            <div
+                                                key={i}
+                                                onClick={() => triggerStudyQuery(`Examine the cross-reference ${ref.reference} in relation to this study`)}
+                                                className="p-3 rounded-lg bg-card/20 border border-border/40 hover:border-[#D4AF37]/50 hover:bg-[#D4AF37]/5 transition-all space-y-1 cursor-pointer group"
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <span className="font-serif font-semibold text-xs text-[#D4AF37] block group-hover:underline">
+                                                        {ref.reference}
+                                                    </span>
+                                                    <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 text-[#D4AF37] transition-opacity" />
+                                                </div>
                                                 <p className="text-xs text-muted-foreground line-clamp-3 italic">
                                                     "{ref.text}"
                                                 </p>
@@ -111,28 +118,39 @@ export function RightPanel() {
                                 </div>
                             )}
 
-                            {/* 4. Follow-up Inquiries */}
+                            {/* 4. Interactive Follow-up Inquiries */}
                             {activeStudyContext.followUpQuestions && activeStudyContext.followUpQuestions.length > 0 && (
                                 <div className="space-y-3">
                                     <h3 className="text-[11px] uppercase tracking-widest text-primary font-bold flex items-center gap-1.5">
-                                        <Sparkles className="h-3.5 w-3.5" /> Continue Studying
+                                        <Sparkles className="h-3.5 w-3.5 text-[#D4AF37]" /> Continue Studying
                                     </h3>
                                     <div className="space-y-1.5">
                                         {activeStudyContext.followUpQuestions.map((q, i) => (
-                                            <div key={i} className="p-2.5 rounded bg-muted/20 border border-border/30 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors">
-                                                {q}
-                                            </div>
+                                            <button
+                                                key={i}
+                                                type="button"
+                                                onClick={() => triggerStudyQuery(q)}
+                                                className="w-full text-left p-2.5 rounded bg-muted/20 border border-border/30 text-xs text-muted-foreground hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]/40 transition-all flex items-center justify-between group cursor-pointer"
+                                            >
+                                                <span className="pr-2">{q}</span>
+                                                <Sparkles className="h-3 w-3 opacity-0 group-hover:opacity-100 text-[#D4AF37] transition-opacity shrink-0" />
+                                            </button>
                                         ))}
                                     </div>
                                 </div>
                             )}
 
-                            {/* 5. Sources Grounding */}
-                            <div className="pt-2 border-t border-border/30">
-                                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                            {/* 5. Authentic Retrieved Sources Grounding */}
+                            <div className="pt-3 border-t border-border/30 space-y-1.5">
+                                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-semibold">
                                     <ShieldCheck className="h-3.5 w-3.5 text-[#D4AF37]" />
-                                    <span>Scripture first. Grounded in canonical texts.</span>
+                                    <span>Grounded Theological Sources:</span>
                                 </div>
+                                <ul className="text-[10px] text-muted-foreground/80 space-y-1 pl-4 list-disc">
+                                    {activeStudyContext.sourcesUsed.map((s, idx) => (
+                                        <li key={idx}>{s}</li>
+                                    ))}
+                                </ul>
                             </div>
                         </div>
                     );

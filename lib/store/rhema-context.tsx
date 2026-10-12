@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { UserRole } from '@/lib/types';
 import { SermonData } from '@/components/studio/sermon-builder';
 import { useUser } from '@clerk/nextjs';
@@ -25,6 +25,7 @@ export interface StudyContextData {
     }[];
     followUpQuestions: string[];
     sourcesUsed: string[];
+    isGrounded?: boolean;
 }
 
 interface RhemaContextType {
@@ -44,6 +45,9 @@ interface RhemaContextType {
     triggerSaveComplete: () => void;
     activeStudyContext: StudyContextData | null;
     setActiveStudyContext: (context: StudyContextData | null) => void;
+    pendingQuery: string | null;
+    triggerStudyQuery: (q: string) => void;
+    clearPendingQuery: () => void;
 }
 
 const RhemaContext = createContext<RhemaContextType | undefined>(undefined);
@@ -60,10 +64,11 @@ export function RhemaProvider({ children }: { children: ReactNode }) {
     const [pdfExportTimestamp, setPdfExportTimestamp] = useState<number | null>(null);
     const [lastSavedTimestamp, setLastSavedTimestamp] = useState<number | null>(null);
     const [activeStudyContext, setActiveStudyContext] = useState<StudyContextData | null>(null);
+    const [pendingQuery, setPendingQuery] = useState<string | null>(null);
 
     const [isLoadingProfile, setIsLoadingProfile] = useState(true);
 
-    const fetchProfile = async () => {
+    const fetchProfile = useCallback(async () => {
         if (!isLoaded) return;
 
         if (!user) {
@@ -92,14 +97,13 @@ export function RhemaProvider({ children }: { children: ReactNode }) {
         } finally {
             setIsLoadingProfile(false);
         }
-    };
+    }, [user, isLoaded]);
 
     useEffect(() => {
         fetchProfile();
-    }, [user, isLoaded]);
+    }, [fetchProfile]);
 
     const toggleRole = () => {
-        // Dev helper to preview UI across tiers
         setUserRole(prev => {
             if (prev === 'MINISTER') return 'DISCIPLE';
             if (prev === 'DISCIPLE') return 'SEEKER';
@@ -110,6 +114,8 @@ export function RhemaProvider({ children }: { children: ReactNode }) {
     const toggleRightPanel = () => setIsRightPanelOpen(prev => !prev);
     const triggerPdfExport = () => setPdfExportTimestamp(Date.now());
     const triggerSaveComplete = () => setLastSavedTimestamp(Date.now());
+    const triggerStudyQuery = (q: string) => setPendingQuery(q);
+    const clearPendingQuery = () => setPendingQuery(null);
 
     // Show Loader for Initial Auth/Profile Fetch
     if (!isLoaded || (user && isLoadingProfile)) {
@@ -133,7 +139,10 @@ export function RhemaProvider({ children }: { children: ReactNode }) {
             lastSavedTimestamp,
             triggerSaveComplete,
             activeStudyContext,
-            setActiveStudyContext
+            setActiveStudyContext,
+            pendingQuery,
+            triggerStudyQuery,
+            clearPendingQuery
         }}>
             {children}
         </RhemaContext.Provider>

@@ -1,21 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { verifyPaystackSignature } from "@/lib/paystack";
+import { fulfillPaymentTransaction } from "@/lib/billing/fulfillment";
 
 export const dynamic = 'force-dynamic';
-
-function getSupabaseServerClient() {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-url.supabase.co';
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
-    return createClient(supabaseUrl, serviceRoleKey);
-}
 
 export async function POST(req: NextRequest) {
     try {
         const rawBody = await req.text();
         const signature = req.headers.get("x-paystack-signature") || "";
 
-        // Verify cryptographic signature
+        // 1. Verify cryptographic HMAC SHA512 signature
         if (!verifyPaystackSignature(rawBody, signature)) {
             console.warn("Invalid Paystack webhook signature received");
             return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
@@ -25,54 +20,35 @@ export async function POST(req: NextRequest) {
         const event = payload.event;
         const data = payload.data;
 
-        console.log(`[PAYSTACK WEBHOOK] Event received: ${event}`);
+        console.log(`[PAYSTACK WEBHOOK] Verified event received: ${event}`);
 
         const supabase = getSupabaseServerClient();
 
         switch (event) {
             case "charge.success": {
-                const userId = data.metadata?.userId || data.metadata?.user_id;
-                const tier = (data.metadata?.tier || "DISCIPLE").toUpperCase();
-                const cycle = data.metadata?.cycle || "monthly";
-                const customerCode = data.customer?.customer_code;
-                const reference = data.reference;
-
-                if (!userId) {
-                    console.warn("[PAYSTACK WEBHOOK] charge.success missing userId in metadata");
+                if (!data || !data.reference) {
+                    console.warn("[PAYSTACK WEBHOOK] charge.success missing reference");
                     break;
                 }
 
-                const periodEnd = new Date();
-                if (cycle === 'yearly') {
-                    periodEnd.setFullYear(periodEnd.getFullYear() + 1);
-                } else {
-                    periodEnd.setMonth(periodEnd.getMonth() + 1);
-                }
+                // Unified idempotent fulfillment with strict amount & currency validation
+                const fulfillment = await fulfillPaymentTransaction({
+                    reference: data.reference,
+                    verifiedData: data
+                });
 
-                const { error } = await supabase
-                    .from('profiles')
-                    .upsert({
-                        id: userId,
-                        tier: tier,
-                        paystack_customer_code: customerCode,
-                        paystack_reference: reference,
-                        subscription_status: 'active',
-                        current_period_end: periodEnd.toISOString(),
-                        updated_at: new Date().toISOString()
-                    });
-
-                if (error) {
-                    console.error("[PAYSTACK WEBHOOK] Failed to update profile:", error);
+                if (!fulfillment.success) {
+                    console.error("[PAYSTACK WEBHOOK] Fulfillment failed:", fulfillment.error);
                 } else {
-                    console.log(`[PAYSTACK WEBHOOK] Successfully upgraded user ${userId} to ${tier}`);
+                    console.log(`[PAYSTACK WEBHOOK] Fulfillment succeeded for ${fulfillment.reference} (${fulfillment.tier})`);
                 }
                 break;
             }
 
             case "subscription.create": {
-                const customerCode = data.customer?.customer_code;
-                const subCode = data.subscription_code;
-                const planCode = data.plan?.plan_code;
+                const customerCode = data?.customer?.customer_code;
+                const subCode = data?.subscription_code;
+                const planCode = data?.plan?.plan_code;
 
                 if (customerCode && subCode) {
                     await supabase
@@ -90,7 +66,7 @@ export async function POST(req: NextRequest) {
 
             case "subscription.disable":
             case "subscription.not_renew": {
-                const subCode = data.subscription_code;
+                const subCode = data?.subscription_code;
                 if (subCode) {
                     await supabase
                         .from('profiles')

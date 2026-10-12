@@ -1,14 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 export const dynamic = 'force-dynamic';
-
-function getSupabaseServerClient() {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-url.supabase.co';
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
-    return createClient(supabaseUrl, serviceRoleKey);
-}
 
 export async function GET() {
     try {
@@ -17,49 +11,64 @@ export async function GET() {
         if (!userId) {
             return NextResponse.json({
                 authenticated: false,
-                streak: 0,
-                longestStreak: 0,
-                prayersCount: 0,
-                sermonsCount: 0,
-                journalCount: 0,
-                recentItems: []
-            });
+                error: "Unauthorized"
+            }, { status: 401 });
         }
 
         const supabase = getSupabaseServerClient();
 
         // 1. Fetch Streak & Stats
-        const { data: stats } = await supabase
+        const { data: stats, error: statsError } = await supabase
             .from('user_stats')
             .select('*')
             .eq('user_id', userId)
-            .single();
+            .maybeSingle();
+
+        if (statsError) {
+            console.error("Error querying user_stats:", statsError);
+            return NextResponse.json({ success: false, error: statsError.message }, { status: 500 });
+        }
 
         // 2. Count Real Prayers
-        const { count: prayersCount } = await supabase
+        const { count: prayersCount, error: prayersError } = await supabase
             .from('prayers')
             .select('*', { count: 'exact', head: true })
             .eq('user_id', userId);
 
+        if (prayersError) {
+            console.error("Error counting prayers:", prayersError);
+            return NextResponse.json({ success: false, error: prayersError.message }, { status: 500 });
+        }
+
         // 3. Count Real Sermons
-        const { count: sermonsCount } = await supabase
+        const { count: sermonsCount, error: sermonsError } = await supabase
             .from('sermons')
             .select('*', { count: 'exact', head: true })
             .eq('user_id', userId);
 
-        // 4. Count Real Journal Entries
-        let journalCount = 0;
-        try {
-            const { count } = await supabase
-                .from('journal_entries')
-                .select('*', { count: 'exact', head: true })
-                .eq('user_id', userId);
-            journalCount = count || 0;
-        } catch (e) {
-            journalCount = 0;
+        if (sermonsError) {
+            console.error("Error counting sermons:", sermonsError);
+            return NextResponse.json({ success: false, error: sermonsError.message }, { status: 500 });
         }
 
-        // 5. Fetch Recent Activities for "Continue Your Walk"
+        // 4. Count Real Journal Entries
+        const { count: journalCount, error: journalError } = await supabase
+            .from('journal_entries')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', userId);
+
+        if (journalError) {
+            console.error("Error counting journal entries:", journalError);
+            return NextResponse.json({ success: false, error: journalError.message }, { status: 500 });
+        }
+
+        // 5. Count Real Saved Studies
+        const { count: studiesCount } = await supabase
+            .from('saved_studies')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', userId);
+
+        // 6. Fetch Recent Activities for "Continue Your Walk"
         const recentItems: { id: string; title: string; type: string; href: string; date: string }[] = [];
 
         // Latest Prayer
@@ -99,24 +108,40 @@ export async function GET() {
         }
 
         // Latest Journal
-        try {
-            const { data: latestJournal } = await supabase
-                .from('journal_entries')
-                .select('id, title, created_at')
-                .eq('user_id', userId)
-                .order('created_at', { ascending: false })
-                .limit(1);
+        const { data: latestJournal } = await supabase
+            .from('journal_entries')
+            .select('id, title, created_at')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(1);
 
-            if (latestJournal?.[0]) {
-                recentItems.push({
-                    id: latestJournal[0].id,
-                    title: latestJournal[0].title,
-                    type: 'Spiritual Journal',
-                    href: '/library',
-                    date: latestJournal[0].created_at
-                });
-            }
-        } catch (e) {}
+        if (latestJournal?.[0]) {
+            recentItems.push({
+                id: latestJournal[0].id,
+                title: latestJournal[0].title,
+                type: 'Spiritual Journal',
+                href: '/library',
+                date: latestJournal[0].created_at
+            });
+        }
+
+        // Latest Study
+        const { data: latestStudy } = await supabase
+            .from('saved_studies')
+            .select('id, title, created_at')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+        if (latestStudy?.[0]) {
+            recentItems.push({
+                id: latestStudy[0].id,
+                title: latestStudy[0].title,
+                type: 'Scripture Study',
+                href: '/spirit-os',
+                date: latestStudy[0].created_at
+            });
+        }
 
         return NextResponse.json({
             authenticated: true,
@@ -126,18 +151,14 @@ export async function GET() {
             prayersCount: prayersCount || 0,
             sermonsCount: sermonsCount || 0,
             journalCount: journalCount || 0,
+            studiesCount: studiesCount || 0,
             recentItems
         });
     } catch (err: any) {
         console.error("Error in /api/user/stats:", err);
         return NextResponse.json({
             authenticated: false,
-            streak: 0,
-            longestStreak: 0,
-            prayersCount: 0,
-            sermonsCount: 0,
-            journalCount: 0,
-            recentItems: []
-        });
+            error: err.message || "Failed to load user stats"
+        }, { status: 500 });
     }
 }

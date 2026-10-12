@@ -1,4 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { detectScriptureReference, resolveScripturePassage, type ScriptureVerse } from "../bible/api-bible.ts";
+import { findLexicalMatches, type LexiconEntry } from "../bible/lexicon-database.ts";
+import { getVerifiedCrossReferences, type VerifiedCrossReference } from "../bible/cross-references.ts";
 
 // Helper to get Gemini client dynamically
 export function getGenAIClient(): { client: GoogleGenerativeAI; modelName: string } | null {
@@ -22,12 +25,12 @@ export const EXEGESIS_SYSTEM_PROMPT = `You are RhemaAI Exegesis Engine, an exper
 Your purpose is deep, faithful, context-grounded Scripture study.
 
 Core Guidelines:
-1. SCRIPTURAL GROUNDING: Always cite chapter and verse (e.g. John 3:16, Romans 8:28). Quote the relevant passage directly when appropriate.
-2. ORIGINAL LANGUAGES: When illuminating deeper meaning, reference original Hebrew, Aramaic, or Greek terms (e.g., *hesed*, *shalom*, *agape*, *logos*, *rhema*) with concise transliteration and definition.
-3. CONTEXT & COVENANT: Explain the historical, cultural, and redemptive context (who wrote it, to whom, during which covenant period).
-4. DISTINCTION: Clearly distinguish between the inspired biblical text and your exegetical commentary.
-5. CROSS-REFERENCES: Provide 2-3 supporting cross-references across Old and New Testaments.
-6. THEOLOGICAL INTEGRITY: Maintain orthodox, christocentric biblical scholarship. Avoid speculative extrapolations.
+1. SCRIPTURAL GROUNDING: Always cite chapter and verse (e.g. John 3:16, Romans 8:28). Base your theological analysis upon the provided canonical evidence.
+2. ORIGINAL LANGUAGES: Integrate genuine Hebrew, Aramaic, or Greek roots with accurate Strong's definitions and transliterations.
+3. CONTEXT & COVENANT: Explain the historical, cultural, and covenantal context (who wrote it, to whom, during which covenant period).
+4. DISTINCTION: Clearly distinguish between inspired biblical text quotations and your theological commentary.
+5. CROSS-REFERENCES: Connect the passage with canonical cross-references across Old and New Testaments.
+6. THEOLOGICAL INTEGRITY: Maintain orthodox, christocentric biblical scholarship.
 7. FORMATTING: Use markdown headers (###), bold text, bullet points, and blockquotes for scriptures.`;
 
 /**
@@ -38,36 +41,12 @@ Your purpose is spiritual encouragement, meditation on God's character, and prac
 
 Core Guidelines:
 1. PASTORAL TONE: Gentle, inspiring, empathetic, and practical, grounded in the peace of Christ.
-2. SCRIPTURE MEDITATION: Center reflections around a core comforting Scripture. Quote concisely (1-2 verses max) using standard or public domain phrasing (e.g. KJV, WEB, ASV), avoiding verbatim duplication of long copyrighted translations.
-3. HEART REFLECTION: Provide 1-2 thoughtful reflection questions to help the believer examine their heart.
+2. SCRIPTURE MEDITATION: Center reflections around the retrieved Scripture passage.
+3. HEART REFLECTION: Provide 1-2 thoughtful reflection questions to help the believer examine their heart before God.
 4. GUIDED PRAYER: Offer a heartfelt, original, scripture-based pastoral prayer.
-5. WALK IT OUT: Provide one concrete, practical action or perspective shift for their day.
-6. BOUNDARIES: Do not claim to speak new divine revelation as God. Guide the user back to the written Word and personal prayer with the Lord.
-7. FORMATTING: Use poetic spacing, calm formatting, and blockquotes for scriptures.`;
-
-/**
- * System prompt for Sermon Studio Outline & Content Generation
- */
-export const SERMON_STUDIO_SYSTEM_PROMPT = `You are RhemaAI Sermon Architect, an elite homiletics and expository preaching mentor.
-You assist pastors and Bible teachers in crafting biblically rich, engaging, and transformational sermon manuscripts and outlines.
-
-Formatting Requirement: Return clean, semantic HTML suitable for a rich text editor.
-Use:
-- <h2> for Major Sections (Introduction, Point I, Point II, Point III, Conclusion, Altar Call)
-- <h3> for Subsections (Biblical Exegesis, Illustration, Practical Application)
-- <blockquote> for Scripture quotes with full reference citations
-- <ul> and <li> for lists and key observations
-- <p> for body paragraphs
-- <strong> for emphasis
-
-Structure your sermon:
-1. <h2>Title & Central Proposition (The "Big Idea")</h2>
-2. <h2>I. Introduction: The Hook & Need</h2> (Captivating opening illustration or question)
-3. <h2>II. Text & Exegetical Foundation</h2> (Detailed verse breakdown, context, original words)
-4. <h2>III. Point 1: The Doctrinal Truth</h2> (Explanation, scriptural evidence, congregation application)
-5. <h2>IV. Point 2: The Heart Confrontation / Insight</h2> (Illustration, life challenge, cross-reference)
-6. <h2>V. Point 3: The Empowered Walk</h2> (Practical steps, how the Holy Spirit enables this)
-7. <h2>VI. Conclusion & Altar Response</h2> (Summary, closing invitation, guided pastoral prayer)`;
+5. WALK IT OUT: Provide one concrete, practical action step for their day.
+6. BOUNDARIES: Guide the user back to the written Word and personal communion with the Lord.
+7. FORMATTING: Use calm formatting, poetic spacing, and blockquotes for scriptures.`;
 
 export interface StudyContextData {
     query: string;
@@ -88,10 +67,57 @@ export interface StudyContextData {
     }[];
     followUpQuestions: string[];
     sourcesUsed: string[];
+    isGrounded?: boolean;
+}
+
+export interface RetrievedEvidence {
+    passage: ScriptureVerse | null;
+    keyTerms: LexiconEntry[];
+    crossReferences: VerifiedCrossReference[];
+    sourcesUsed: string[];
 }
 
 /**
- * Crisis Detection Safeguard: Detect severe distress and provide immediate pastoral care + crisis helplines
+ * Retrieve verified evidence before prompt execution (RAG Grounding Pipeline)
+ */
+export async function retrieveStudyEvidence(query: string, preferredVersion: string = "ESV"): Promise<RetrievedEvidence> {
+    const detectedRef = detectScriptureReference(query);
+    let passage: ScriptureVerse | null = null;
+    const sourcesUsed: string[] = [];
+
+    if (detectedRef) {
+        passage = await resolveScripturePassage(detectedRef, preferredVersion);
+        if (passage) {
+            sourcesUsed.push(`Canonical Scripture: ${passage.reference} (${passage.translation})`);
+        }
+    }
+
+    const passageText = passage?.text || "";
+    const keyTerms = findLexicalMatches(query, passageText);
+    if (keyTerms.length > 0) {
+        sourcesUsed.push("Strong's Biblical Concordance & Theological Lexicon");
+    }
+
+    const refForCross = passage?.reference || query;
+    const crossReferences = getVerifiedCrossReferences(refForCross, query);
+    if (crossReferences.length > 0) {
+        sourcesUsed.push("Treasury of Scripture Knowledge Cross-References");
+    }
+
+    if (sourcesUsed.length === 0) {
+        sourcesUsed.push("Christocentric Biblical Knowledge Base");
+    }
+
+    return {
+        passage,
+        keyTerms,
+        crossReferences,
+        sourcesUsed
+    };
+}
+
+/**
+ * Crisis Detection Safeguard
  */
 export function checkCrisisTrigger(query: string): string | null {
     const q = query.toLowerCase();
@@ -122,43 +148,193 @@ export function checkCrisisTrigger(query: string): string | null {
     return null;
 }
 
-const CONTEXT_PROMPT_INSTRUCTION = `
-
----
-CRITICAL FORMATTING INSTRUCTION:
-At the very end of your response, output exactly this delimiter on a new line:
----RHEMA_STUDY_CONTEXT---
-Followed by a valid JSON object (no markdown backticks around the JSON) with this exact schema:
-{
-  "passageFocus": "Main Scripture Book Chapter:Verse(s)",
-  "passageSummary": "1-2 sentence core truth of this passage",
-  "keyTerms": [
-    { "term": "English word", "original": "Original Hebrew/Greek", "language": "Greek/Hebrew", "definition": "Lexical meaning", "occurrencesNote": "Biblical context note" }
-  ],
-  "crossReferences": [
-    { "reference": "Book Chapter:Verse", "text": "Concise verse snippet", "connection": "Theological link" }
-  ],
-  "followUpQuestions": [
-    "Thought-provoking follow-up question 1",
-    "Thought-provoking follow-up question 2"
-  ]
-}`;
-
 /**
- * Generate a complete study response with structured theological context for the Living Context Panel
+ * Generate a grounded SpiritOS study with verifiable evidence
  */
 export async function generateSpiritOSStudy(
     query: string,
     mode: SpiritOSMode = 'devotion',
-    history: { role: 'user' | 'ai' | 'model'; content: string }[] = []
+    history: { role: 'user' | 'ai' | 'model'; content: string }[] = [],
+    preferredVersion: string = "ESV"
 ): Promise<{ content: string; context: StudyContextData }> {
     const crisisAlert = checkCrisisTrigger(query);
     const ai = getGenAIClient();
 
+    // 1. Retrieve real evidence before model invocation
+    const evidence = await retrieveStudyEvidence(query, preferredVersion);
+
+    let evidenceInstruction = "";
+    if (evidence.passage) {
+        evidenceInstruction = `
+[RETRIEVED CANONICAL PASSAGE EVIDENCE - SCRIPTURE GROUND TRUTH]
+Reference: ${evidence.passage.reference}
+Translation: ${evidence.passage.translation}
+Text: "${evidence.passage.text}"
+${evidence.passage.attributionNote ? `Attribution: ${evidence.passage.attributionNote}` : ""}
+
+STRICT INSTRUCTION: Your exegesis must directly interpret and cite this retrieved text. Do not misquote.`;
+    }
+
+    if (evidence.keyTerms.length > 0) {
+        evidenceInstruction += `\n[VERIFIED ORIGINAL LANGUAGE LEXICON]:\n` +
+            evidence.keyTerms.map(t => `- ${t.term} (${t.original}, ${t.strongs}, ${t.transliteration}): ${t.definition} (${t.occurrencesNote})`).join("\n");
+    }
+
+    const basePrompt = mode === 'exegesis' ? EXEGESIS_SYSTEM_PROMPT : DEVOTIONAL_SYSTEM_PROMPT;
+    const fullSystemPrompt = `${basePrompt}\n\n${evidenceInstruction}`;
+
     if (ai) {
         try {
+            const model = ai.client.getGenerativeModel({
+                model: ai.modelName,
+                systemInstruction: fullSystemPrompt
+            });
+
+            const chatHistory = history.map(h => ({
+                role: h.role === 'ai' ? 'model' : 'user',
+                parts: [{ text: h.content.slice(0, 2000) }]
+            }));
+
+            const chat = model.startChat({ history: chatHistory });
+            const result = await chat.sendMessage(query);
+            const rawText = result.response.text();
+            const finalContent = crisisAlert ? `${crisisAlert}\n\n${rawText}` : rawText;
+
+            const passageFocus = evidence.passage?.reference || (mode === 'exegesis' ? "The Living Word" : "Daily Devotional Walk");
+            const followUps = mode === 'exegesis' ? [
+                `How does ${passageFocus} connect to the broader covenant narrative?`,
+                `What is the original historical situation of the author and audience?`,
+                `How does this passage point to the person and work of Christ Jesus?`
+            ] : [
+                `How does this truth apply to what I am facing today?`,
+                `What is one practical step of obedience the Holy Spirit is highlighting?`,
+                `How can I pray this passage over my family and community?`
+            ];
+
+            return {
+                content: finalContent,
+                context: {
+                    query,
+                    mode,
+                    passageFocus,
+                    passageSummary: evidence.passage?.text.slice(0, 160) + "..." || `A Christ-centered exploration of ${passageFocus}.`,
+                    keyTerms: evidence.keyTerms.map(t => ({
+                        term: t.term,
+                        original: `${t.original} (${t.transliteration})`,
+                        language: t.language,
+                        definition: t.definition,
+                        occurrencesNote: `${t.strongs} • ${t.occurrencesNote}`
+                    })),
+                    crossReferences: evidence.crossReferences.slice(0, 3),
+                    followUpQuestions: followUps,
+                    sourcesUsed: evidence.sourcesUsed,
+                    isGrounded: Boolean(evidence.passage)
+                }
+            };
+        } catch (error) {
+            console.error("Gemini API call failed, using grounded fallback:", error);
+        }
+    }
+
+    // Grounded fallback
+    const fallbackText = getFallbackSpiritOSResponse(query, mode, evidence);
+    const finalContent = crisisAlert ? `${crisisAlert}\n\n${fallbackText}` : fallbackText;
+
+    return {
+        content: finalContent,
+        context: {
+            query,
+            mode,
+            passageFocus: evidence.passage?.reference || (mode === 'exegesis' ? "Hebrews 4:12" : "Matthew 11:28"),
+            passageSummary: evidence.passage?.text.slice(0, 160) || "The living and active Word of God, profitable for teaching and righteousness.",
+            keyTerms: evidence.keyTerms.map(t => ({
+                term: t.term,
+                original: `${t.original} (${t.transliteration})`,
+                language: t.language,
+                definition: t.definition,
+                occurrencesNote: `${t.strongs} • ${t.occurrencesNote}`
+            })),
+            crossReferences: evidence.crossReferences.slice(0, 3),
+            followUpQuestions: [
+                "How does this truth apply to my current walk?",
+                "What step of faith is God inviting me to take today?"
+            ],
+            sourcesUsed: evidence.sourcesUsed,
+            isGrounded: Boolean(evidence.passage)
+        }
+    };
+}
+
+/**
+ * Backward-compatible helper returning raw text string for tests and legacy callers
+ */
+export async function generateSpiritOSResponse(
+    query: string,
+    mode: SpiritOSMode = 'devotion',
+    history: { role: 'user' | 'ai' | 'model'; content: string }[] = []
+): Promise<string> {
+    const study = await generateSpiritOSStudy(query, mode, history);
+    return study.content;
+}
+
+/**
+ * Native Gemini content streaming for low-latency token delivery
+ */
+export async function streamSpiritOSStudy(
+    query: string,
+    mode: SpiritOSMode = 'devotion',
+    history: { role: 'user' | 'ai' | 'model'; content: string }[] = [],
+    preferredVersion: string = "ESV"
+): Promise<{ stream: ReadableStream; context: StudyContextData }> {
+    const ai = getGenAIClient();
+    const evidence = await retrieveStudyEvidence(query, preferredVersion);
+
+    const passageFocus = evidence.passage?.reference || (mode === 'exegesis' ? "Hebrews 4:12" : "Matthew 11:28");
+    const followUps = mode === 'exegesis' ? [
+        `How does ${passageFocus} connect to the broader covenant narrative?`,
+        `What is the original historical situation of the author and audience?`,
+        `How does this passage point to the person and work of Christ Jesus?`
+    ] : [
+        `How does this truth apply to what I am facing today?`,
+        `What is one practical step of obedience the Holy Spirit is highlighting?`,
+        `How can I pray this passage over my family and community?`
+    ];
+
+    const contextData: StudyContextData = {
+        query,
+        mode,
+        passageFocus,
+        passageSummary: evidence.passage?.text.slice(0, 160) + "..." || `A Christ-centered exploration of ${passageFocus}.`,
+        keyTerms: evidence.keyTerms.map(t => ({
+            term: t.term,
+            original: `${t.original} (${t.transliteration})`,
+            language: t.language,
+            definition: t.definition,
+            occurrencesNote: `${t.strongs} • ${t.occurrencesNote}`
+        })),
+        crossReferences: evidence.crossReferences.slice(0, 3),
+        followUpQuestions: followUps,
+        sourcesUsed: evidence.sourcesUsed,
+        isGrounded: Boolean(evidence.passage)
+    };
+
+    if (ai) {
+        try {
+            let evidenceInstruction = "";
+            if (evidence.passage) {
+                evidenceInstruction = `
+[RETRIEVED CANONICAL PASSAGE EVIDENCE - SCRIPTURE GROUND TRUTH]
+Reference: ${evidence.passage.reference} (${evidence.passage.translation})
+Text: "${evidence.passage.text}"
+STRICT INSTRUCTION: Your response must directly interpret and cite this retrieved Scripture text.`;
+            }
+            if (evidence.keyTerms.length > 0) {
+                evidenceInstruction += `\n[VERIFIED ORIGINAL LANGUAGE LEXICON]:\n` +
+                    evidence.keyTerms.map(t => `- ${t.term} (${t.original}, ${t.strongs}): ${t.definition}`).join("\n");
+            }
+
             const basePrompt = mode === 'exegesis' ? EXEGESIS_SYSTEM_PROMPT : DEVOTIONAL_SYSTEM_PROMPT;
-            const fullSystemPrompt = basePrompt + CONTEXT_PROMPT_INSTRUCTION;
+            const fullSystemPrompt = `${basePrompt}\n\n${evidenceInstruction}`;
 
             const model = ai.client.getGenerativeModel({
                 model: ai.modelName,
@@ -167,68 +343,52 @@ export async function generateSpiritOSStudy(
 
             const chatHistory = history.map(h => ({
                 role: h.role === 'ai' ? 'model' : 'user',
-                parts: [{ text: h.content }]
+                parts: [{ text: h.content.slice(0, 2000) }]
             }));
 
             const chat = model.startChat({ history: chatHistory });
-            const result = await chat.sendMessage(query);
-            const rawText = result.response.text();
+            const resultStream = await chat.sendMessageStream(query);
 
-            // Extract context delimiter
-            const delimiter = "---RHEMA_STUDY_CONTEXT---";
-            if (rawText.includes(delimiter)) {
-                const parts = rawText.split(delimiter);
-                const answerContent = parts[0].trim();
-                const jsonStr = parts[1].replace(/```json/g, "").replace(/```/g, "").trim();
-
-                try {
-                    const parsedContext = JSON.parse(jsonStr);
-                    const finalContent = crisisAlert ? `${crisisAlert}\n\n${answerContent}` : answerContent;
-                    return {
-                        content: finalContent,
-                        context: {
-                            query,
-                            mode,
-                            passageFocus: parsedContext.passageFocus || extractPassageFocus(query, answerContent),
-                            passageSummary: parsedContext.passageSummary || "Scriptural meditation on God's living Word.",
-                            keyTerms: Array.isArray(parsedContext.keyTerms) ? parsedContext.keyTerms : [],
-                            crossReferences: Array.isArray(parsedContext.crossReferences) ? parsedContext.crossReferences : [],
-                            followUpQuestions: Array.isArray(parsedContext.followUpQuestions) ? parsedContext.followUpQuestions : [],
-                            sourcesUsed: ["Berean / WEB Canonical Scripture", "Strong's Exhaustive Concordance", "Christocentric Exegesis"]
+            const encoder = new TextEncoder();
+            const stream = new ReadableStream({
+                async start(controller) {
+                    try {
+                        const crisisAlert = checkCrisisTrigger(query);
+                        if (crisisAlert) {
+                            controller.enqueue(encoder.encode(crisisAlert + "\n\n"));
                         }
-                    };
-                } catch (jsonErr) {
-                    console.warn("Could not parse AI context JSON, extracting heuristically:", jsonErr);
-                }
-            }
 
-            // If delimiter was absent, return content and derive context
-            const finalContent = crisisAlert ? `${crisisAlert}\n\n${rawText}` : rawText;
-            return {
-                content: finalContent,
-                context: deriveContextFromResponse(query, rawText, mode)
-            };
+                        for await (const chunk of resultStream.stream) {
+                            const chunkText = chunk.text();
+                            if (chunkText) {
+                                controller.enqueue(encoder.encode(chunkText));
+                            }
+                        }
+                    } catch (err) {
+                        console.error("Stream generation error:", err);
+                    } finally {
+                        controller.close();
+                    }
+                }
+            });
+
+            return { stream, context: contextData };
         } catch (error) {
-            console.error("Gemini API call failed, using intelligent theological fallback:", error);
+            console.error("Gemini streaming error, falling back:", error);
         }
     }
 
-    // Intelligent built-in theological fallback
-    const fallbackContent = getFallbackSpiritOSResponse(query, mode);
-    const finalContent = crisisAlert ? `${crisisAlert}\n\n${fallbackContent}` : fallbackContent;
-    return {
-        content: finalContent,
-        context: deriveContextFromResponse(query, fallbackContent, mode)
-    };
-}
+    // Fallback stream
+    const fallbackResponse = getFallbackSpiritOSResponse(query, mode, evidence);
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+        start(controller) {
+            controller.enqueue(encoder.encode(fallbackResponse));
+            controller.close();
+        }
+    });
 
-export async function generateSpiritOSResponse(
-    query: string,
-    mode: SpiritOSMode = 'devotion',
-    history: { role: 'user' | 'ai' | 'model'; content: string }[] = []
-): Promise<string> {
-    const study = await generateSpiritOSStudy(query, mode, history);
-    return study.content;
+    return { stream, context: contextData };
 }
 
 /**
@@ -242,43 +402,39 @@ export async function generateSermonAI(params: {
     notes?: string;
 }): Promise<string> {
     const { title, scripture, tone, context = [], notes = "" } = params;
+    const ai = getGenAIClient();
 
-    const contextStr = context.map(c => `[${c.label}]: ${c.content}`).join("\n");
+    // Fetch verified scripture text to ground sermon
+    const passage = await resolveScripturePassage(scripture);
 
     const prompt = `
 Topic / Title: ${title || "Walking in Divine Faith"}
 Key Scripture Passage: ${scripture || "Hebrews 11:1-6"}
-Preaching Tone: ${tone || "Theological and Encouraging"}
+${passage ? `[Retrieved Biblical Text]: "${passage.text}" (${passage.translation})` : ""}
+Preaching Tone: ${tone || "Expository & Passionate"}
+${notes ? `Pastor's Working Notes: ${notes}` : ""}
+${context.length > 0 ? `Context Material:\n${context.map(c => `[${c.label}]: ${c.content}`).join("\n")}` : ""}
 
-Context Materials:
-${contextStr || "None provided"}
+Craft a complete, richly detailed sermon outline and manuscript in semantic HTML following your instructions.`;
 
-Pastor's Initial Notes:
-${notes || "None provided"}
-
-Generate a complete, inspirational, theologically sound expository sermon outline formatted in semantic HTML.`;
-
-    const ai = getGenAIClient();
     if (ai) {
         try {
             const model = ai.client.getGenerativeModel({
                 model: ai.modelName,
-                systemInstruction: SERMON_STUDIO_SYSTEM_PROMPT
+                systemInstruction: "You are RhemaAI Sermon Architect. Generate expository sermon outlines in HTML."
             });
-
             const result = await model.generateContent(prompt);
             return result.response.text();
-        } catch (error) {
-            console.error("Gemini sermon generation failed, using structured template fallback:", error);
+        } catch (e) {
+            console.error("Gemini sermon generation error:", e);
         }
     }
 
-    // Structured fallback sermon
     return getFallbackSermon(title, scripture, tone);
 }
 
 /**
- * Assist Actions in Sermon Studio (Expand, Rephrase, Add Scripture)
+ * Assist Actions in Sermon Studio
  */
 export async function generateStudioAssist(action: 'expand' | 'rephrase' | 'scripture', text: string): Promise<string> {
     const ai = getGenAIClient();
@@ -303,62 +459,53 @@ export async function generateStudioAssist(action: 'expand' | 'rephrase' | 'scri
 
     // Fallbacks
     if (action === 'expand') {
-        return `<p>${text}</p><p><em>Further Biblical Insight:</em> In the broader narrative of Scripture, this truth echoes God's covenant faithfulness throughout the generations. As we see in Romans 8:31, if God be for us, who can be against us?</p>`;
+        return `<p>${text}</p><p><em>Biblical Insight:</em> In God's covenant architecture, this truth echoes His faithfulness through the generations (Romans 8:31).</p>`;
     } else if (action === 'rephrase') {
         return `<p><strong>Proclaimed Truth:</strong> ${text.trim()} — grounded not in human striving, but in the unshakable rock of God's sovereign grace.</p>`;
     } else {
-        return `<blockquote>“Your word is a lamp to my feet and a light to my path.” — Psalm 119:105 (ESV)</blockquote><blockquote>“For the word of God is alive and active. Sharper than any double-edged sword, it penetrates even to dividing soul and spirit...” — Hebrews 4:12 (NIV)</blockquote>`;
+        return `<blockquote>“Your word is a lamp to my feet and a light to my path.” — Psalm 119:105 (ESV)</blockquote><blockquote>“For the word of God is living and active, sharper than any two-edged sword...” — Hebrews 4:12 (ESV)</blockquote>`;
     }
 }
 
-// Fallback Engine
-function getFallbackSpiritOSResponse(query: string, mode: SpiritOSMode): string {
-    const qLower = query.toLowerCase();
+function getFallbackSpiritOSResponse(query: string, mode: SpiritOSMode, evidence: RetrievedEvidence): string {
+    const passageRef = evidence.passage?.reference || (mode === 'exegesis' ? "Hebrews 4:12" : "Matthew 11:28");
+    const passageText = evidence.passage?.text || "The Word of God is living and active, sharper than any two-edged sword.";
 
     if (mode === 'exegesis') {
         return `### Biblical Exegesis: "${query}"
 
-> **Key Scripture Reference**: *“All Scripture is breathed out by God and profitable for teaching, for reproof, for correction, and for training in righteousness.”* — **2 Timothy 3:16 (ESV)**
+> **Canonical Scripture**: *“${passageText}”* — **${passageRef}**
 
 ---
 
-#### 1. Historical & Cultural Context
-When approaching this question, we must look at the covenantal framework of Scripture. The biblical writers frequently addressed communities navigating cultural pressure, reminding them that God's covenant promises (*berith* in Hebrew) stand eternal regardless of changing empires.
+#### 1. Historical & Covenantal Context
+Scripture interprets Scripture. Approaching this passage within the covenant framework reveals God's unchanging faithfulness across the ages. The original audience was addressed in a historical moment of divine testing, calling them to stand firm upon the Word.
 
-#### 2. Original Language Insights
-- **Logos (λόγος)**: The divine revelation and wisdom of God personified in Christ Jesus (John 1:1).
-- **Rhema (ῥῆμα)**: The spoken, living, and active word spoken into a specific moment by the Holy Spirit (Ephesians 6:17).
-- **Shalom (שָׁלוֹם)**: Not merely the absence of conflict, but total wholeness, restoration, and flourishing under God's righteous rule.
+#### 2. Original Language Lexical Insights
+${evidence.keyTerms.map(t => `- **${t.term}** (*${t.original}*, ${t.strongs}): ${t.definition} (${t.occurrencesNote})`).join("\n")}
 
-#### 3. Cross-References
-- **Hebrews 4:12**: The Word of God as living, active, and discerning thoughts and intents.
-- **Isaiah 55:11**: God's word does not return void, but accomplishes that which He pleases.
-- **Colossians 3:16**: Letting the word of Christ dwell in you richly.
+#### 3. Verified Cross-References
+${evidence.crossReferences.map(c => `- **${c.reference}**: ${c.connection}`).join("\n")}
 
-#### 4. Theological Summary & Expository Takeaway
-Scripture interprets Scripture. In studying this truth, we are invited not just to intellectual comprehension, but to submission to Christ the King. Continue your study by meditating on the surrounding chapter to see the full narrative flow.`;
+#### 4. Theological Takeaway
+Our faith does not rest in human speculation, but upon the solid bedrock of Christ Jesus and His inspired Word.`;
     }
 
     return `### Daily Devotional Reflection
 
-> **“Come to me, all who labor and are heavy laden, and I will give you rest. Take my yoke upon you, and learn from me, for I am gentle and lowly in heart, and you will find rest for your souls.”** — *Matthew 11:28-29*
+> **“${passageText}”** — *${passageRef}*
 
 ---
 
 #### The Still Small Voice
-In the noise of daily routines and demanding responsibilities, our hearts easily drift toward self-reliance. But Jesus extends an immediate, unchanging invitation: *Come*. 
-
-Rest is not found in the absence of work; it is found in the presence of the Savior. When we bring our questions, burdens, and desires to Him, He replaces our anxious striving with His sovereign peace.
+In the noise of daily responsibilities, God extends an enduring invitation: come, listen, and find soul rest in Christ. Grace is not an abstract concept; it is the person of Jesus meeting you right in this moment.
 
 #### Heart Reflection
-1. What weight have you been carrying today that you need to gently release into the Father's hands?
-2. Where is God inviting you to slow down and experience His steadfast love?
+1. Where in your life today is God inviting you to surrender anxious striving and receive His peace?
+2. How does the promise of this Scripture anchor your hope?
 
 #### Guided Prayer
-*Heavenly Father, thank You for Your unwavering grace. When my soul feels crowded or uncertain, anchor me in Your living Word. Grant me the discernment to recognize Your guidance, and the humility to trust Your timing. Fill me with Your peace that surpasses all understanding today. In Jesus' mighty name, Amen.*
-
-#### Walk It Out Today
-Take 3 minutes today to step away from all screens. Breathe deeply and silently recite: *“The Lord is my shepherd; I shall not want.”*`;
+*Heavenly Father, thank You for Your living Word. Anchor my heart in Your unfailing love today. Lead me beside still waters and give me grace to follow You. In Jesus' name, Amen.*`;
 }
 
 function getFallbackSermon(title: string, scripture: string, tone: string): string {
@@ -366,105 +513,21 @@ function getFallbackSermon(title: string, scripture: string, tone: string): stri
     const sPassage = scripture || "Matthew 7:24-27";
 
     return `<h2>${sTitle}</h2>
-<p><strong>Preaching Passage:</strong> <em>${sPassage}</em> | <strong>Tone:</strong> <em>${tone || "Expository & Encouraging"}</em></p>
+<p><strong>Preaching Passage:</strong> <em>${sPassage}</em> | <strong>Tone:</strong> <em>${tone || "Expository & Passionate"}</em></p>
 
 <h2>I. Introduction: The Foundation That Stands</h2>
-<p>Every builder knows that the stability of a structure is never tested on sunny days—it is revealed when the storms arise. Today, we live in a culture that builds upon shifting sands of public opinion and emotion. Yet Christ offers us a foundation that cannot be moved.</p>
+<p>Every builder knows that the stability of a structure is never tested on sunny days—it is revealed when the storms arise. In Christ, we possess a foundation that cannot be moved.</p>
 <blockquote>“Everyone then who hears these words of mine and does them will be like a wise man who built his house on the rock.” — Matthew 7:24</blockquote>
 
-<h2>II. Biblical Exegesis: The Rock and the Sand</h2>
-<p>In the original Greek, the word for 'rock' here is <em>petra</em> (πέτρα)—a massive, immovable bedrock, distinct from a loose stone. Christ Himself is the cornerstone of our salvation.</p>
-<ul>
-    <li><strong>Hearing vs. Doing:</strong> True discipleship is not merely consuming biblical knowledge; it is obedient action energized by grace.</li>
-    <li><strong>The Storm is Inevitable:</strong> Notice that the rain fell on both houses! Believers are not exempt from trials, but our foundation guarantees our survival.</li>
-</ul>
+<h2>II. Text & Exegetical Foundation</h2>
+<p>The Greek word for 'rock' here is <em>petra</em> (πέτρα)—a massive, immovable bedrock. Christ Himself is the cornerstone of our salvation.</p>
 
-<h2>III. Point 1: Hearkening to the Master's Voice</h2>
-<p>To build on the rock, we must cultivate ears tuned to the Holy Spirit. In a distracted world, silence before God is a revolutionary act of faith.</p>
-<blockquote>“Call to me and I will answer you, and will tell you great and hidden things that you have not known.” — Jeremiah 33:3</blockquote>
+<h2>III. Point 1: Hearing and Obeying the Master</h2>
+<p>To build on the rock, we must cultivate ears tuned to the Holy Spirit and a heart willing to obey.</p>
 
-<h2>IV. Point 2: The Discipline of Kingdom Obedience</h2>
-<p>Obedience is not legalism; it is the natural love response of a forgiven child. When God asks us to forgive, to give, or to stand firm, His commands are always for our protection and flourishing.</p>
+<h2>IV. Point 2: The Peace When the Storm Breaks</h2>
+<p>Believers are not exempt from life's trials, but our foundation guarantees our ultimate victory.</p>
 
-<h2>V. Point 3: Peace When the Winds Blow</h2>
-<p>When financial storms, health trials, or relational challenges arise, the soul rooted in Christ has an anchor. You are not holding on to God with your own grip—His sovereign hand is holding you.</p>
-
-<h2>VI. Conclusion & Altar Response</h2>
-<p>Today, examine your foundation. What have you been building your security upon? If your foundation has begun to crack under the weight of life, Jesus is extending His hand right now.</p>
-<p><strong>Closing Pastoral Prayer:</strong></p>
-<blockquote>“Lord Jesus, we surrender our fragile kingdoms to You. Be the cornerstone of our homes, our careers, and our hearts. Anchor our souls upon Your eternal truth. In Your holy name we pray, Amen.”</blockquote>`;
-}
-
-function extractPassageFocus(query: string, content: string): string {
-    const scriptureRegex = /\b(?:[123]\s+)?(?:Genesis|Exodus|Leviticus|Numbers|Deuteronomy|Joshua|Judges|Ruth|[12]\s+Samuel|[12]\s+Kings|[12]\s+Chronicles|Ezra|Nehemiah|Esther|Job|Psalms?|Proverbs|Ecclesiastes|Song of Solomon|Isaiah|Jeremiah|Lamentations|Ezekiel|Daniel|Hosea|Joel|Amos|Obadiah|Jonah|Micah|Nahum|Habakkuk|Zephaniah|Haggai|Zechariah|Malachi|Matthew|Mark|Luke|John|Acts|Romans|[12]\s+Corinthians|Galatians|Ephesians|Philippians|Colossians|[12]\s+Thessalonians|[12]\s+Timothy|Titus|Philemon|Hebrews|James|[12]\s+Peter|[123]\s+John|Jude|Revelation)\s+\d+:\d+(?:-\d+)?\b/i;
-
-    const queryMatch = query.match(scriptureRegex);
-    if (queryMatch) return queryMatch[0];
-
-    const contentMatch = content.match(scriptureRegex);
-    if (contentMatch) return contentMatch[0];
-
-    return "Scripture Focus";
-}
-
-function deriveContextFromResponse(query: string, content: string, mode: SpiritOSMode): StudyContextData {
-    const passage = extractPassageFocus(query, content);
-    const qLower = query.toLowerCase();
-
-    const lexicalBank: Record<string, { term: string; original: string; language: string; definition: string; occurrencesNote?: string }> = {
-        peace: { term: "Peace", original: "εἰρήνη (Eirēnē)", language: "Greek", definition: "Wholeness, quietness, oneness under Christ's rule.", occurrencesNote: "Found 92 times in the New Testament." },
-        shalom: { term: "Peace / Wholeness", original: "שָׁלוֹם (Shālôm)", language: "Hebrew", definition: "Completeness, sound health, divine welfare.", occurrencesNote: "Central covenant word appearing 237 times in the Old Testament." },
-        love: { term: "Love", original: "ἀγάπη (Agapē)", language: "Greek", definition: "Self-sacrificing, unconditional covenant love.", occurrencesNote: "116 occurrences in NT; distinctive characteristic of God's nature." },
-        hesed: { term: "Steadfast Love", original: "חֶסֶד (Ḥesed)", language: "Hebrew", definition: "Covenant faithfulness, unfailing loyal kindness.", occurrencesNote: "Appears 248 times across OT covenant books." },
-        grace: { term: "Grace", original: "χάρις (Charis)", language: "Greek", definition: "Unearned favor, divine influence upon the human heart.", occurrencesNote: "Found 156 times in NT epistles." },
-        faith: { term: "Faith", original: "πίστις (Pistis)", language: "Greek", definition: "Firm persuasion, relational conviction in God's promises.", occurrencesNote: "Found 243 times in NT." },
-        word: { term: "Word / Spoken Truth", original: "ῥῆμα (Rhēma)", language: "Greek", definition: "The living, actively spoken word of God by the Spirit.", occurrencesNote: "Distinguished from Logos as immediate utterance." },
-        logos: { term: "Divine Word", original: "λόγος (Logos)", language: "Greek", definition: "The divine Reason, eternal expression of God incarnate.", occurrencesNote: "John 1:1; 330 times in the New Testament." },
-        truth: { term: "Truth", original: "ἀλήθεια (Alētheia)", language: "Greek", definition: "Reality as God sees it; unhidden divine reality.", occurrencesNote: "Found 109 times in the New Testament." },
-        rest: { term: "Rest", original: "ἀνάπαυσις (Anapausis)", language: "Greek", definition: "Cessation from exhausting toil; soul refreshment in Christ.", occurrencesNote: "Matthew 11:29." }
-    };
-
-    const matchedTerms = [];
-    for (const [key, termObj] of Object.entries(lexicalBank)) {
-        if (qLower.includes(key) || content.toLowerCase().includes(key)) {
-            matchedTerms.push(termObj);
-        }
-    }
-
-    if (matchedTerms.length === 0) {
-        matchedTerms.push(mode === 'exegesis' ? lexicalBank.logos : lexicalBank.peace);
-    }
-
-    const crossRefs = [];
-    if (passage.toLowerCase().includes("john")) {
-        crossRefs.push({ reference: "1 John 1:1-4", text: "That which was from the beginning, which we have heard, which we have seen...", connection: "Johannine theology of the incarnate Word." });
-        crossRefs.push({ reference: "Colossians 1:15-17", text: "He is the image of the invisible God, the firstborn of all creation.", connection: "Christ as the preeminent agent of creation." });
-    } else if (passage.toLowerCase().includes("romans")) {
-        crossRefs.push({ reference: "Genesis 50:20", text: "You meant evil against me, but God meant it for good...", connection: "Covenant sovereignty working good out of suffering." });
-        crossRefs.push({ reference: "2 Corinthians 4:17", text: "For this light momentary affliction is preparing for us an eternal weight of glory.", connection: "Kingdom perspective on trials." });
-    } else {
-        crossRefs.push({ reference: "Psalm 119:105", text: "Your word is a lamp to my feet and a light to my path.", connection: "Divine guidance through the written Word." });
-        crossRefs.push({ reference: "Hebrews 4:12", text: "For the word of God is living and active, sharper than any two-edged sword.", connection: "The discerning power of Scripture." });
-    }
-
-    const followUps = mode === 'exegesis' ? [
-        `How does ${passage} connect to the broader covenant narrative?`,
-        `What is the original historical situation of the original audience?`,
-        `How does this passage point to the person and work of Christ?`
-    ] : [
-        `How does the truth of ${passage} speak to my current season of life?`,
-        `What is one practical step of obedience the Holy Spirit is prompting?`,
-        `How can I pray this passage over my family and community?`
-    ];
-
-    return {
-        query,
-        mode,
-        passageFocus: passage,
-        passageSummary: `An exploration of ${passage} grounded in Christ-centered biblical truth.`,
-        keyTerms: matchedTerms.slice(0, 3),
-        crossReferences: crossRefs,
-        followUpQuestions: followUps,
-        sourcesUsed: ["Berean / WEB Canonical Scripture", "Strong's Lexicon", "Christocentric Exegesis"]
-    };
+<h2>V. Conclusion & Altar Response</h2>
+<p>Today, examine your foundation. Place your entire life into the faithful hands of Christ.</p>`;
 }

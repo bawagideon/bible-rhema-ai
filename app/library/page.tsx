@@ -8,7 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Library, Search, FileText, ArrowUpRight, Sparkles, Plus, BookOpen, Trash2, HeartHandshake, Bookmark } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Library, Search, FileText, ArrowUpRight, Sparkles, Plus, BookOpen, Trash2, HeartHandshake, Bookmark, Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -23,6 +25,15 @@ export default function LibraryPage() {
 
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
+
+    const [editingItem, setEditingItem] = useState<{
+        type: 'study' | 'journal';
+        id: string;
+        title: string;
+        content: string;
+        scripture_ref?: string;
+    } | null>(null);
+    const [isSavingEdit, setIsSavingEdit] = useState(false);
 
     useEffect(() => {
         loadAllData();
@@ -86,6 +97,59 @@ export default function LibraryPage() {
             toast.success("Journal entry deleted");
         } catch (e) {
             toast.error("Delete failed");
+        }
+    };
+
+    const handleSaveEdit = async () => {
+        if (!editingItem) return;
+        if (!editingItem.content.trim()) {
+            toast.error("Content cannot be empty");
+            return;
+        }
+
+        setIsSavingEdit(true);
+        try {
+            if (editingItem.type === 'study') {
+                const res = await fetch('/api/studies', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: editingItem.id,
+                        title: editingItem.title,
+                        content: editingItem.content,
+                        scripture_ref: editingItem.scripture_ref
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    throw new Error(data.error || "Failed to update study");
+                }
+                setStudies(prev => prev.map(s => s.id === editingItem.id ? { ...s, ...data.data } : s));
+                toast.success("Study updated successfully");
+            } else {
+                const res = await fetch('/api/journal', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: editingItem.id,
+                        title: editingItem.title,
+                        content: editingItem.content,
+                        scripture_ref: editingItem.scripture_ref
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    throw new Error(data.error || "Failed to update journal");
+                }
+                setJournals(prev => prev.map(j => j.id === editingItem.id ? { ...j, ...data.data } : j));
+                toast.success("Journal reflection updated successfully");
+            }
+            setEditingItem(null);
+        } catch (e: any) {
+            console.error("Save edit error:", e);
+            toast.error(e.message || "Failed to save updates");
+        } finally {
+            setIsSavingEdit(false);
         }
     };
 
@@ -165,9 +229,28 @@ export default function LibraryPage() {
                                             <p className="text-xs text-gray-400 mt-2 line-clamp-3 leading-relaxed">{study.content}</p>
                                         </div>
                                         <div className="flex justify-between items-center pt-2 border-t border-gray-800/60">
-                                            <button onClick={() => handleDeleteStudy(study.id)} className="text-gray-500 hover:text-rose-400 text-xs">
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
+                                            <div className="flex items-center gap-3">
+                                                <button
+                                                    onClick={() => setEditingItem({
+                                                        type: 'study',
+                                                        id: study.id,
+                                                        title: study.title || '',
+                                                        content: study.content || '',
+                                                        scripture_ref: study.scripture_ref || ''
+                                                    })}
+                                                    className="text-gray-500 hover:text-[#D4AF37] transition-colors text-xs"
+                                                    title="Edit study"
+                                                >
+                                                    <Pencil className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteStudy(study.id)}
+                                                    className="text-gray-500 hover:text-rose-400 transition-colors text-xs"
+                                                    title="Delete study"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
                                             <Button
                                                 size="sm"
                                                 variant="ghost"
@@ -243,10 +326,30 @@ export default function LibraryPage() {
                                             <h4 className="text-base font-semibold text-white mt-1">{entry.title}</h4>
                                             <p className="text-xs text-gray-400 mt-2 leading-relaxed whitespace-pre-wrap">{entry.content}</p>
                                         </div>
-                                        <div className="pt-2 border-t border-gray-800/60 flex justify-end">
-                                            <button onClick={() => handleDeleteJournal(entry.id)} className="text-gray-500 hover:text-rose-400 text-xs">
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
+                                        <div className="pt-2 border-t border-gray-800/60 flex justify-between items-center">
+                                            <div className="flex items-center gap-3">
+                                                <button
+                                                    onClick={() => setEditingItem({
+                                                        type: 'journal',
+                                                        id: entry.id,
+                                                        title: entry.title || '',
+                                                        content: entry.content || '',
+                                                        scripture_ref: entry.scripture_ref || ''
+                                                    })}
+                                                    className="text-gray-500 hover:text-[#D4AF37] transition-colors text-xs"
+                                                    title="Edit reflection"
+                                                >
+                                                    <Pencil className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteJournal(entry.id)}
+                                                    className="text-gray-500 hover:text-rose-400 transition-colors text-xs"
+                                                    title="Delete entry"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                            <span className="text-[10px] uppercase tracking-wider text-gray-500">Reflection</span>
                                         </div>
                                     </div>
                                 ))}
@@ -287,6 +390,72 @@ export default function LibraryPage() {
                         )}
                     </TabsContent>
                 </Tabs>
+
+                {/* EDIT MODAL FOR STUDIES & JOURNALS */}
+                <Dialog open={!!editingItem} onOpenChange={(open) => { if (!open) setEditingItem(null); }}>
+                    <DialogContent className="sm:max-w-xl bg-[#141416] border-gray-800 text-white">
+                        <DialogHeader>
+                            <DialogTitle className="font-serif text-lg text-[#D4AF37]">
+                                {editingItem?.type === 'study' ? "Edit Saved Study" : "Edit Journal Reflection"}
+                            </DialogTitle>
+                            <DialogDescription className="text-xs text-gray-400">
+                                Update your exegetical notes, personal reflections, or references. Changes persist immediately.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        {editingItem && (
+                            <div className="space-y-4 py-2">
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-medium text-gray-300">Title</label>
+                                    <Input
+                                        value={editingItem.title}
+                                        onChange={(e) => setEditingItem({ ...editingItem, title: e.target.value })}
+                                        placeholder="Title..."
+                                        className="bg-black/50 border-gray-800 text-sm focus-visible:ring-[#D4AF37]"
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-medium text-gray-300">Scripture Reference (Optional)</label>
+                                    <Input
+                                        value={editingItem.scripture_ref || ''}
+                                        onChange={(e) => setEditingItem({ ...editingItem, scripture_ref: e.target.value })}
+                                        placeholder="e.g. John 1:1, Romans 8:28"
+                                        className="bg-black/50 border-gray-800 text-sm focus-visible:ring-[#D4AF37]"
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-medium text-gray-300">Content</label>
+                                    <Textarea
+                                        value={editingItem.content}
+                                        onChange={(e) => setEditingItem({ ...editingItem, content: e.target.value })}
+                                        rows={7}
+                                        placeholder="Study notes or spiritual reflection..."
+                                        className="bg-black/50 border-gray-800 text-sm focus-visible:ring-[#D4AF37] leading-relaxed resize-none"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        <DialogFooter className="gap-2 sm:gap-0">
+                            <Button
+                                variant="ghost"
+                                onClick={() => setEditingItem(null)}
+                                className="text-xs text-gray-400 hover:text-white"
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={handleSaveEdit}
+                                disabled={isSavingEdit}
+                                className="bg-[#D4AF37] text-black hover:bg-[#b5952f] text-xs font-semibold"
+                            >
+                                {isSavingEdit ? "Saving..." : "Save Changes"}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </div>
         </ShellLayout>
     );

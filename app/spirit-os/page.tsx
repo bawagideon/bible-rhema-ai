@@ -35,7 +35,7 @@ export default function SpiritOSPage() {
         exegesis: []
     });
 
-    const { userRole, setActiveStudyContext } = useRhema();
+    const { userRole, setActiveStudyContext, pendingQuery, clearPendingQuery } = useRhema();
     const searchParams = useSearchParams();
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -49,6 +49,15 @@ export default function SpiritOSPage() {
             handleSendMessage(initialPrompt, mode);
         }
     }, [searchParams]);
+
+    // Listen for interactive inquiries clicked in the Living Context Panel
+    useEffect(() => {
+        if (pendingQuery && !isLoading) {
+            const q = pendingQuery;
+            clearPendingQuery();
+            handleSendMessage(q, mode);
+        }
+    }, [pendingQuery, isLoading, mode]);
 
     // Auto-scroll on new messages or chunk streaming
     useEffect(() => {

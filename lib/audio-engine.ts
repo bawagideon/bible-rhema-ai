@@ -110,11 +110,12 @@ class RhemaAudioEngine {
     }
 
     /**
-     * Secret Place: 432Hz Harmonic Prayer Pad (C-Maj Chord) with warm lowpass warmth
+     * Secret Place: Authentic 432Hz Harmonic Prayer Pad (A4=432Hz tuning standard) with warm lowpass warmth
      */
     private generateSanctuaryPads(ctx: AudioContext) {
-        // C3 (130.81Hz), G3 (196.00Hz), C4 (261.63Hz), E4 (329.63Hz)
-        const freqs = [130.81, 196.00, 261.63, 329.63];
+        // True A4=432Hz standard pitch (multiplier 432/440 ~ 0.9818):
+        // C3 (128.43Hz), G3 (192.44Hz), C4 (256.87Hz), E4 (323.63Hz)
+        const freqs = [128.43, 192.44, 256.87, 323.63];
 
         freqs.forEach((freq, idx) => {
             const osc = ctx.createOscillator();
@@ -139,11 +140,11 @@ class RhemaAudioEngine {
     }
 
     /**
-     * Deep Calls: 528Hz Soaking Prayer Meditation Drone
+     * Deep Calls: 528Hz Contemplative Prayer Meditation Drone
      */
     private generateSoakingDrone(ctx: AudioContext) {
-        const rootFreq = 132; // Sub-harmonic of 528Hz
-        const harmonics = [rootFreq, rootFreq * 2, rootFreq * 4];
+        const rootFreq = 132; // Sub-harmonic of 528Hz (132Hz -> 264Hz -> 528Hz)
+        const harmonics = [132, 264, 528];
 
         harmonics.forEach((freq, idx) => {
             const osc = ctx.createOscillator();

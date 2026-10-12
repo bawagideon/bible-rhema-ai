@@ -1,16 +1,9 @@
 import { Webhook } from 'svix';
 import { headers } from 'next/headers';
 import { WebhookEvent } from '@clerk/nextjs/server';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseServerClient } from '@/lib/supabase-server';
 
 export const dynamic = 'force-dynamic';
-
-function getSupabaseClient() {
-    return createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-url.supabase.co',
-        process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key'
-    );
-}
 
 export async function POST(req: Request) {
     const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
@@ -20,7 +13,7 @@ export async function POST(req: Request) {
         return new Response('Webhook secret missing', { status: 500 });
     }
 
-    // Get the headers asynchronously (Next.js 15)
+    // Get the headers asynchronously
     const headerPayload = await headers();
     const svix_id = headerPayload.get("svix-id");
     const svix_timestamp = headerPayload.get("svix-timestamp");
@@ -48,7 +41,7 @@ export async function POST(req: Request) {
     }
 
     const eventType = evt.type;
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseServerClient();
 
     if (eventType === 'user.created') {
         const { id, email_addresses, first_name, last_name, primary_email_address_id, image_url } = evt.data;
@@ -60,34 +53,59 @@ export async function POST(req: Request) {
 
         console.log(`[CLERK WEBHOOK] Creating user ${id} (${email})`);
 
-        const { error } = await supabase.from('profiles').upsert({
-            id: id,
-            email: email,
-            full_name: name,
-            avatar_url: image_url || null,
-            tier: 'SEEKER',
-            subscription_status: 'active',
-            updated_at: new Date().toISOString()
-        }, {
-            onConflict: 'id',
-            ignoreDuplicates: true
-        });
+        // Check if profile already exists
+        const { data: existingProfile } = await supabase
+            .from('profiles')
+            .select('id, tier')
+            .eq('id', id)
+            .maybeSingle();
 
-        if (error) {
-            console.error('[CLERK WEBHOOK] Error creating profile:', error);
-            return new Response(`Database sync error: ${error.message}`, { status: 500 });
+        if (existingProfile) {
+            // Repair tier if it was incorrectly set to GUEST or null
+            const validTier = ['DISCIPLE', 'MINISTER'].includes(existingProfile.tier)
+                ? existingProfile.tier
+                : 'SEEKER';
+
+            await supabase.from('profiles').update({
+                email,
+                full_name: name,
+                avatar_url: image_url || null,
+                tier: validTier,
+                updated_at: new Date().toISOString()
+            }).eq('id', id);
+        } else {
+            const { error: insertErr } = await supabase.from('profiles').insert({
+                id: id,
+                email: email,
+                full_name: name,
+                avatar_url: image_url || null,
+                tier: 'SEEKER',
+                subscription_status: 'active',
+                has_completed_onboarding: false,
+                updated_at: new Date().toISOString()
+            });
+
+            if (insertErr) {
+                console.error('[CLERK WEBHOOK] Error inserting profile:', insertErr);
+                return new Response(`Database sync error: ${insertErr.message}`, { status: 500 });
+            }
         }
 
         // Initialize user stats cleanly at 0
-        await supabase.from('user_stats').upsert({
+        const { error: statsErr } = await supabase.from('user_stats').upsert({
             user_id: id,
             prayer_streak_days: 0,
             longest_streak_days: 0,
             total_minutes_prayed: 0,
-            total_focus_minutes: 0
+            total_focus_minutes: 0,
+            last_active_date: new Date().toISOString().split('T')[0]
         }, { onConflict: 'user_id' });
 
-        console.log(`[CLERK WEBHOOK] User ${id} created successfully.`);
+        if (statsErr) {
+            console.warn('[CLERK WEBHOOK] Warning initializing user_stats:', statsErr);
+        }
+
+        console.log(`[CLERK WEBHOOK] User ${id} created/synchronized successfully.`);
     } else if (eventType === 'user.updated') {
         const { id, email_addresses, first_name, last_name, primary_email_address_id, image_url } = evt.data;
 

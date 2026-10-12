@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { recordUserActivity } from "@/lib/activity";
 
 export const dynamic = 'force-dynamic';
-
-function getSupabaseServerClient() {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-url.supabase.co';
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
-    return createClient(supabaseUrl, serviceRoleKey);
-}
 
 export async function GET() {
     try {
@@ -21,20 +16,19 @@ export async function GET() {
         const supabase = getSupabaseServerClient();
         const { data, error } = await supabase
             .from('sermons')
-            .select('id, title, created_at, content_json')
+            .select('id, title, created_at, updated_at, content_json')
             .eq('user_id', userId)
             .order('created_at', { ascending: false });
 
         if (error) {
             console.error("Supabase fetch sermons error:", error);
-            // Return empty list gracefully if table/db is not yet initialized
-            return NextResponse.json({ success: true, data: [] });
+            return NextResponse.json({ success: false, error: error.message }, { status: 500 });
         }
 
         return NextResponse.json({ success: true, data: data || [] });
     } catch (error: any) {
         console.error("Error in GET /api/sermons:", error);
-        return NextResponse.json({ success: true, data: [] });
+        return NextResponse.json({ success: false, error: error.message || "Failed to fetch sermons" }, { status: 500 });
     }
 }
 
@@ -47,6 +41,11 @@ export async function POST(req: NextRequest) {
         }
 
         const sermon = await req.json();
+
+        if (!sermon || typeof sermon !== 'object') {
+            return NextResponse.json({ success: false, error: "Invalid sermon payload" }, { status: 400 });
+        }
+
         const supabase = getSupabaseServerClient();
 
         // 1. Ensure profile exists for foreign key
@@ -60,7 +59,7 @@ export async function POST(req: NextRequest) {
             query = supabase
                 .from('sermons')
                 .update({
-                    title: sermon.title || 'Untitled Sermon',
+                    title: (sermon.title || 'Untitled Sermon').trim().slice(0, 300),
                     content_json: sermon,
                     updated_at: new Date().toISOString()
                 })
@@ -73,7 +72,7 @@ export async function POST(req: NextRequest) {
                 .from('sermons')
                 .insert({
                     user_id: userId,
-                    title: sermon.title || 'Untitled Sermon',
+                    title: (sermon.title || 'Untitled Sermon').trim().slice(0, 300),
                     content_json: sermon,
                 })
                 .select()
@@ -87,10 +86,13 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ success: false, error: error.message }, { status: 500 });
         }
 
+        // Record user activity for streak
+        await recordUserActivity(userId);
+
         return NextResponse.json({ success: true, data });
     } catch (error: any) {
         console.error("Error in POST /api/sermons:", error);
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+        return NextResponse.json({ success: false, error: error.message || "Failed to save sermon" }, { status: 500 });
     }
 }
 
@@ -124,6 +126,6 @@ export async function DELETE(req: NextRequest) {
         return NextResponse.json({ success: true });
     } catch (error: any) {
         console.error("Error in DELETE /api/sermons:", error);
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+        return NextResponse.json({ success: false, error: error.message || "Failed to delete sermon" }, { status: 500 });
     }
 }

@@ -7,7 +7,9 @@ import { execSync } from 'child_process';
 // Load env vars
 dotenv.config({ path: '.env.local' });
 
-const PROJECT_REF = 'jmutyodbogffcvhvxsgv';
+// Derive project ref dynamically from env
+const urlMatch = process.env.NEXT_PUBLIC_SUPABASE_URL?.match(/https:\/\/([a-z0-9_-]+)\.supabase\.co/i);
+const PROJECT_REF = process.env.SUPABASE_PROJECT_REF || (urlMatch ? urlMatch[1] : undefined);
 const GEMINI_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
 
 if (!GEMINI_KEY) {
@@ -21,13 +23,17 @@ console.log('🚀 Starting Deployment Fixer...');
 
 // 1. Set Secrets
 console.log('\n🔑 Setting Remote Secrets...');
-try {
-    // We use execSync to run the supabase CLI
-    execSync(`npx supabase secrets set GOOGLE_AI_API_KEY="${GEMINI_KEY}" --project-ref ${PROJECT_REF}`, { stdio: 'inherit' });
-    console.log('✅ Secrets Set Successfully.');
-} catch (error) {
-    console.error('❌ Failed to set secrets:', error);
-    process.exit(1);
+if (!PROJECT_REF) {
+    console.warn('⚠️ Warning: SUPABASE_PROJECT_REF or valid NEXT_PUBLIC_SUPABASE_URL not configured. Skipping remote secrets push.');
+} else {
+    try {
+        // We use execSync to run the supabase CLI
+        execSync(`npx supabase secrets set GOOGLE_AI_API_KEY="${GEMINI_KEY}" --project-ref ${PROJECT_REF}`, { stdio: 'inherit' });
+        console.log('✅ Secrets Set Successfully.');
+    } catch (error) {
+        console.error('❌ Failed to set secrets:', error);
+        process.exit(1);
+    }
 }
 
 // 2. Push Database
