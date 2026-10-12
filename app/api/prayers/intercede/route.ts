@@ -92,21 +92,23 @@ export async function POST(req: NextRequest) {
             }
 
             // Insert new intercession record
-            try {
-                await supabase
-                    .from('prayer_intercessions')
-                    .insert({
-                        prayer_id: prayerId,
-                        user_id: userId
-                    });
-            } catch (e: any) {
-                // Unique constraint caught
-                return NextResponse.json({
-                    success: true,
-                    message: "You have already joined in prayer for this request.",
-                    prayedCount: prayer.prayed_count || 1,
-                    alreadyPrayed: true
+            const { error: insertErr } = await supabase
+                .from('prayer_intercessions')
+                .insert({
+                    prayer_id: prayerId,
+                    user_id: userId
                 });
+
+            if (insertErr) {
+                if (insertErr.code === '23505' || insertErr.message?.toLowerCase().includes('unique')) {
+                    return NextResponse.json({
+                        success: true,
+                        message: "You have already joined in prayer for this request.",
+                        prayedCount: prayer.prayed_count || 1,
+                        alreadyPrayed: true
+                    });
+                }
+                throw insertErr;
             }
 
             // Increment prayed_count on prayer

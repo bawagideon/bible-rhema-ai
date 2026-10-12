@@ -1,5 +1,5 @@
-import { getSupabaseServerClient } from "@/lib/supabase-server";
-import { getExpectedPlanPrice, PaidTier, BillingCycle } from "@/lib/billing/plans";
+import { getSupabaseServerClient } from "../supabase-server.ts";
+import { getExpectedPlanPrice, type PaidTier, type BillingCycle } from "./plans.ts";
 
 export interface FulfillPaymentParams {
     reference: string;
@@ -34,8 +34,9 @@ export interface FulfillmentResult {
 }
 
 /**
- * Idempotent, server-validated payment fulfillment helper.
- * Used by both POST /api/billing/paystack/verify and POST /api/webhooks/paystack.
+ * Idempotent, concurrency-safe payment fulfillment engine.
+ * Serialized via PostgreSQL transaction-level advisory locks and atomic RPC execution.
+ * Fails closed on any database read/write anomaly.
  */
 export async function fulfillPaymentTransaction(
     params: FulfillPaymentParams
@@ -56,7 +57,7 @@ export async function fulfillPaymentTransaction(
         };
     }
 
-    // 2. Validate currency
+    // 2. Validate currency (Strict NGN)
     if (verifiedData.currency !== 'NGN') {
         return {
             success: false,
@@ -89,7 +90,7 @@ export async function fulfillPaymentTransaction(
         };
     }
 
-    // 4. Validate tier and cycle against server price catalog
+    // 4. Validate tier and cycle against canonical server price catalog
     const rawTier = (verifiedData.metadata?.tier || '').toUpperCase();
     const rawCycle = (verifiedData.metadata?.cycle || 'monthly').toLowerCase();
 
@@ -113,60 +114,7 @@ export async function fulfillPaymentTransaction(
         };
     }
 
-    const supabase = getSupabaseServerClient();
-
-    // 6. Check existing transaction in payment_transactions table (Replay Protection)
-    const { data: existingTx, error: txCheckErr } = await supabase
-        .from('payment_transactions')
-        .select('*')
-        .eq('reference', reference)
-        .maybeSingle();
-
-    if (txCheckErr && txCheckErr.code !== 'PGRST116') {
-        console.warn("Could not query payment_transactions table (table may not exist yet, checking profiles fallback):", txCheckErr);
-    }
-
-    if (existingTx) {
-        // If already fulfilled, return idempotent success without pushing period end again!
-        if (existingTx.status === 'fulfilled') {
-            return {
-                success: true,
-                tier: existingTx.plan as PaidTier,
-                cycle: existingTx.cycle as BillingCycle,
-                reference,
-                alreadyFulfilled: true,
-                statusCode: 200
-            };
-        }
-
-        // If reference belongs to a different user, reject!
-        if (existingTx.user_id !== targetUserId) {
-            return {
-                success: false,
-                reference,
-                error: "This transaction reference was already recorded for another user.",
-                statusCode: 409
-            };
-        }
-    }
-
-    // Fallback check on profiles table if payment_transactions has no row
-    const { data: existingProfileRef } = await supabase
-        .from('profiles')
-        .select('id, paystack_reference, current_period_end')
-        .eq('paystack_reference', reference)
-        .maybeSingle();
-
-    if (existingProfileRef && existingProfileRef.id !== targetUserId) {
-        return {
-            success: false,
-            reference,
-            error: "This transaction reference has already been redeemed by another account.",
-            statusCode: 409
-        };
-    }
-
-    // 7. Calculate period end
+    // 6. Calculate period end
     const periodEnd = new Date();
     if (planPrice.cycle === 'yearly') {
         periodEnd.setFullYear(periodEnd.getFullYear() + 1);
@@ -175,56 +123,56 @@ export async function fulfillPaymentTransaction(
     }
 
     const customerCode = verifiedData.customer?.customer_code;
+    const supabase = getSupabaseServerClient();
 
-    // 8. Record transaction in payment_transactions
-    try {
-        await supabase
-            .from('payment_transactions')
-            .upsert({
+    // 7. Atomic PostgreSQL RPC fulfillment with advisory locking and replay protection
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('fulfill_subscription_payment', {
+        p_reference: reference,
+        p_user_id: targetUserId,
+        p_tier: planPrice.tier,
+        p_billing_cycle: planPrice.cycle,
+        p_amount_kobo: planPrice.amountInKobo,
+        p_currency: planPrice.currency,
+        p_customer_code: customerCode || null,
+        p_period_end: periodEnd.toISOString(),
+        p_response_json: verifiedData
+    });
+
+    if (rpcError) {
+        console.error("[BILLING FULFILLMENT ERROR] Atomic RPC failed:", rpcError);
+        // Fail closed on any database ledger error
+        if (rpcError.message?.includes('USER_MISMATCH')) {
+            return {
+                success: false,
                 reference,
-                user_id: targetUserId,
-                amount_kobo: planPrice.amountInKobo,
-                currency: planPrice.currency,
-                plan: planPrice.tier,
-                cycle: planPrice.cycle,
-                status: 'fulfilled',
-                fulfilled_at: new Date().toISOString(),
-                paystack_response_json: verifiedData
-            }, { onConflict: 'reference' });
-    } catch (e) {
-        console.warn("Could not insert into payment_transactions (will proceed with profile update):", e);
-    }
-
-    // 9. Update user profile
-    const { error: profileUpdateError } = await supabase
-        .from('profiles')
-        .upsert({
-            id: targetUserId,
-            tier: planPrice.tier,
-            paystack_customer_code: customerCode || null,
-            paystack_reference: reference,
-            subscription_status: 'active',
-            current_period_end: periodEnd.toISOString(),
-            updated_at: new Date().toISOString()
-        });
-
-    if (profileUpdateError) {
-        console.error("Profile update error during fulfillment:", profileUpdateError);
+                error: "This transaction reference was already recorded for a different user.",
+                statusCode: 409
+            };
+        }
         return {
             success: false,
             reference,
-            error: `Failed to update profile entitlement: ${profileUpdateError.message}`,
+            error: `Atomic payment fulfillment failed: ${rpcError.message}`,
+            statusCode: 500
+        };
+    }
+
+    if (!rpcResult || !rpcResult.success) {
+        return {
+            success: false,
+            reference,
+            error: "Fulfillment rejected by database ledger validation.",
             statusCode: 500
         };
     }
 
     return {
         success: true,
-        tier: planPrice.tier,
-        cycle: planPrice.cycle,
-        periodEnd: periodEnd.toISOString(),
+        tier: (rpcResult.tier || planPrice.tier) as PaidTier,
+        cycle: (rpcResult.cycle || planPrice.cycle) as BillingCycle,
+        periodEnd: rpcResult.period_end || periodEnd.toISOString(),
         reference,
-        alreadyFulfilled: false,
+        alreadyFulfilled: Boolean(rpcResult.already_fulfilled),
         statusCode: 200
     };
 }

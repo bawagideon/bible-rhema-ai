@@ -94,37 +94,32 @@ ALTER TABLE public.profiles ADD CONSTRAINT profiles_tier_check CHECK (tier IN ('
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
--- Profiles Policies
+-- Profiles Policies (Strict Non-Null Owner Access)
 CREATE POLICY "profiles_select_own" ON public.profiles
     FOR SELECT USING (requesting_user_id() IS NOT NULL AND requesting_user_id() = id);
+
+CREATE POLICY "profiles_update_own" ON public.profiles
+    FOR UPDATE USING (requesting_user_id() IS NOT NULL AND requesting_user_id() = id)
+    WITH CHECK (requesting_user_id() IS NOT NULL AND requesting_user_id() = id);
 
 CREATE POLICY "profiles_insert_own" ON public.profiles
     FOR INSERT WITH CHECK (requesting_user_id() IS NOT NULL AND requesting_user_id() = id);
 
-CREATE POLICY "profiles_update_own" ON public.profiles
-    FOR UPDATE USING (requesting_user_id() IS NOT NULL AND requesting_user_id() = id);
-
--- 4. PRAYERS TABLE & INTERCESSION JOIN TABLE
+-- 4. PRAYERS TABLE & CONSTRAINTS
 CREATE TABLE IF NOT EXISTS public.prayers (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     description TEXT,
-    status TEXT CHECK (status IN ('active', 'answered', 'archived')) DEFAULT 'active',
+    category TEXT DEFAULT 'general',
     is_community BOOLEAN DEFAULT false,
-    author_name TEXT,
-    ai_strategy TEXT,
-    scripture_ref TEXT,
+    status TEXT DEFAULT 'active' CHECK (status IN ('active', 'answered', 'archived')),
     prayed_count INT DEFAULT 0,
     testimony TEXT,
     answered_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-
-ALTER TABLE public.prayers ADD COLUMN IF NOT EXISTS is_community BOOLEAN DEFAULT false;
-ALTER TABLE public.prayers ADD COLUMN IF NOT EXISTS author_name TEXT;
-ALTER TABLE public.prayers ADD COLUMN IF NOT EXISTS testimony TEXT;
-ALTER TABLE public.prayers ADD COLUMN IF NOT EXISTS answered_at TIMESTAMPTZ;
 
 ALTER TABLE public.prayers ENABLE ROW LEVEL SECURITY;
 
@@ -160,8 +155,9 @@ CREATE POLICY "prayer_intercessions_select_own" ON public.prayer_intercessions
 CREATE POLICY "prayer_intercessions_insert_own" ON public.prayer_intercessions
     FOR INSERT WITH CHECK (requesting_user_id() IS NOT NULL AND requesting_user_id() = user_id);
 
--- ATOMIC, AUTHORIZED PRAYER INTERCESSION RPC FUNCTION
-CREATE OR REPLACE FUNCTION increment_prayer_intercession(p_prayer_id UUID, p_user_id TEXT)
+-- ATOMIC, SECURE PRAYER INTERCESSION RPC FUNCTION
+-- Blocks spoofing: caller MUST be authenticated, and caller MUST match p_user_id
+CREATE OR REPLACE FUNCTION public.increment_prayer_intercession(p_prayer_id UUID, p_user_id TEXT)
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -173,8 +169,12 @@ DECLARE
     v_caller TEXT;
 BEGIN
     v_caller := requesting_user_id();
-    IF v_caller IS NOT NULL AND v_caller <> p_user_id THEN
-        RAISE EXCEPTION 'Caller ID does not match target user ID';
+    IF v_caller IS NULL THEN
+        RAISE EXCEPTION 'UNAUTHENTICATED: Caller identity is missing or unverified';
+    END IF;
+
+    IF v_caller <> p_user_id THEN
+        RAISE EXCEPTION 'UNAUTHORIZED: Caller ID % does not match target user ID %', v_caller, p_user_id;
     END IF;
 
     SELECT is_community, status INTO v_is_community, v_status
@@ -204,8 +204,9 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION increment_prayer_intercession(UUID, TEXT) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION increment_prayer_intercession(UUID, TEXT) TO authenticated, service_role, anon;
+-- Strict RPC execution permissions: REVOKE from anon/public
+REVOKE ALL ON FUNCTION public.increment_prayer_intercession(UUID, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.increment_prayer_intercession(UUID, TEXT) TO authenticated, service_role;
 
 -- 5. SERMONS TABLE
 CREATE TABLE IF NOT EXISTS public.sermons (
@@ -299,12 +300,17 @@ CREATE TABLE IF NOT EXISTS public.daily_rhema (
     scripture_ref TEXT NOT NULL,
     content TEXT NOT NULL,
     prayer_focus TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    CONSTRAINT daily_rhema_user_date_unique UNIQUE (user_id, date)
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-ALTER TABLE public.daily_rhema DROP CONSTRAINT IF EXISTS daily_rhema_user_date_unique;
-ALTER TABLE public.daily_rhema ADD CONSTRAINT daily_rhema_user_date_unique UNIQUE (user_id, date);
+-- Safely reconcile duplicates before establishing unique constraint
+DELETE FROM public.daily_rhema a
+USING public.daily_rhema b
+WHERE a.id > b.id
+  AND a.user_id = b.user_id
+  AND a.date = b.date;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_rhema_user_date ON public.daily_rhema(user_id, date);
 
 ALTER TABLE public.daily_rhema ENABLE ROW LEVEL SECURITY;
 
@@ -314,7 +320,7 @@ CREATE POLICY "daily_rhema_select_own" ON public.daily_rhema
 CREATE POLICY "daily_rhema_insert_own" ON public.daily_rhema
     FOR INSERT WITH CHECK (requesting_user_id() IS NOT NULL AND requesting_user_id() = user_id);
 
--- 9. USER STATS TABLE
+-- 9. USER STATS TABLE & ATOMIC STREAK TRANSITIONS
 CREATE TABLE IF NOT EXISTS public.user_stats (
     user_id TEXT PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
     prayer_streak_days INT DEFAULT 0,
@@ -335,12 +341,72 @@ CREATE POLICY "user_stats_insert_own" ON public.user_stats
 CREATE POLICY "user_stats_update_own" ON public.user_stats
     FOR UPDATE USING (requesting_user_id() IS NOT NULL AND requesting_user_id() = user_id);
 
--- 10. PAYMENT TRANSACTIONS AUDIT TABLE
+-- CONCURRENCY-SAFE ATOMIC USER ACTIVITY RPC
+CREATE OR REPLACE FUNCTION public.record_atomic_user_activity(p_user_id TEXT, p_today DATE)
+RETURNS TABLE (prayer_streak_days INT, longest_streak_days INT, last_active_date DATE)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_stats public.user_stats%ROWTYPE;
+    v_diff INT;
+    v_new_streak INT;
+    v_new_longest INT;
+BEGIN
+    SELECT * INTO v_stats
+    FROM public.user_stats
+    WHERE user_id = p_user_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        INSERT INTO public.user_stats (
+            user_id, prayer_streak_days, longest_streak_days, last_active_date
+        ) VALUES (
+            p_user_id, 1, 1, p_today
+        )
+        RETURNING * INTO v_stats;
+
+        RETURN QUERY SELECT v_stats.prayer_streak_days, v_stats.longest_streak_days, v_stats.last_active_date;
+        RETURN;
+    END IF;
+
+    IF v_stats.last_active_date = p_today THEN
+        RETURN QUERY SELECT v_stats.prayer_streak_days, v_stats.longest_streak_days, v_stats.last_active_date;
+        RETURN;
+    END IF;
+
+    v_diff := p_today - v_stats.last_active_date;
+
+    IF v_diff = 1 THEN
+        v_new_streak := COALESCE(v_stats.prayer_streak_days, 0) + 1;
+    ELSE
+        v_new_streak := 1;
+    END IF;
+
+    v_new_longest := GREATEST(COALESCE(v_stats.longest_streak_days, 0), v_new_streak);
+
+    UPDATE public.user_stats
+    SET
+        prayer_streak_days = v_new_streak,
+        longest_streak_days = v_new_longest,
+        last_active_date = p_today
+    WHERE user_id = p_user_id
+    RETURNING * INTO v_stats;
+
+    RETURN QUERY SELECT v_stats.prayer_streak_days, v_stats.longest_streak_days, v_stats.last_active_date;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.record_atomic_user_activity(TEXT, DATE) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.record_atomic_user_activity(TEXT, DATE) TO authenticated, service_role;
+
+-- 10. PAYMENT TRANSACTIONS AUDIT TABLE & ATOMIC FULFILLMENT
 CREATE TABLE IF NOT EXISTS public.payment_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     reference TEXT UNIQUE NOT NULL,
     user_id TEXT NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    amount_kobo INT NOT NULL,
+    amount_kobo BIGINT NOT NULL,
     currency TEXT NOT NULL DEFAULT 'NGN',
     plan TEXT NOT NULL,
     cycle TEXT NOT NULL,
@@ -355,19 +421,183 @@ ALTER TABLE public.payment_transactions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "payment_tx_select_own" ON public.payment_transactions
     FOR SELECT USING (requesting_user_id() IS NOT NULL AND requesting_user_id() = user_id);
 
--- 11. VECTOR DOCUMENTS TABLE ACCESS HARDENING
+-- ATOMIC, REPLAY-PROTECTED SUBSCRIPTION PAYMENT FULFILLMENT RPC
+CREATE OR REPLACE FUNCTION public.fulfill_subscription_payment(
+    p_reference TEXT,
+    p_user_id TEXT,
+    p_tier TEXT,
+    p_billing_cycle TEXT,
+    p_amount_kobo BIGINT,
+    p_currency TEXT,
+    p_customer_code TEXT,
+    p_period_end TIMESTAMPTZ,
+    p_response_json JSONB
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_tx public.payment_transactions%ROWTYPE;
+BEGIN
+    -- Advisory lock serializes concurrent attempts on this exact payment reference
+    PERFORM pg_advisory_xact_lock(hashtext('paystack_ref_' || p_reference));
+
+    SELECT * INTO v_tx
+    FROM public.payment_transactions
+    WHERE reference = p_reference
+    FOR UPDATE;
+
+    IF FOUND THEN
+        IF v_tx.user_id <> p_user_id THEN
+            RAISE EXCEPTION 'USER_MISMATCH: Reference % already registered to a different user', p_reference;
+        END IF;
+
+        IF v_tx.status = 'fulfilled' THEN
+            RETURN jsonb_build_object(
+                'success', true,
+                'already_fulfilled', true,
+                'tier', v_tx.plan,
+                'cycle', v_tx.cycle,
+                'reference', p_reference
+            );
+        END IF;
+    END IF;
+
+    -- Upsert transaction record into audit ledger
+    INSERT INTO public.payment_transactions (
+        reference, user_id, amount_kobo, currency, plan, cycle, status, fulfilled_at, paystack_response_json
+    ) VALUES (
+        p_reference, p_user_id, p_amount_kobo, p_currency, p_tier, p_billing_cycle, 'fulfilled', NOW(), p_response_json
+    ) ON CONFLICT (reference) DO UPDATE SET
+        status = 'fulfilled',
+        fulfilled_at = NOW(),
+        paystack_response_json = EXCLUDED.paystack_response_json;
+
+    -- Atomically update or create profile entitlement
+    UPDATE public.profiles
+    SET
+        tier = p_tier,
+        paystack_customer_code = COALESCE(p_customer_code, paystack_customer_code),
+        paystack_reference = p_reference,
+        subscription_status = 'active',
+        current_period_end = p_period_end,
+        updated_at = NOW()
+    WHERE id = p_user_id;
+
+    IF NOT FOUND THEN
+        INSERT INTO public.profiles (
+            id, tier, paystack_customer_code, paystack_reference, subscription_status, current_period_end, updated_at
+        ) VALUES (
+            p_user_id, p_tier, p_customer_code, p_reference, 'active', p_period_end, NOW()
+        );
+    END IF;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'already_fulfilled', false,
+        'tier', p_tier,
+        'cycle', p_billing_cycle,
+        'reference', p_reference,
+        'period_end', p_period_end
+    );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.fulfill_subscription_payment FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.fulfill_subscription_payment TO authenticated, service_role;
+
+-- 11. VECTOR DOCUMENTS TABLE ACCESS HARDENING (Explicit Canonical Distinction)
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'documents') THEN
         ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES public.profiles(id) ON DELETE CASCADE;
+        ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS is_canonical BOOLEAN NOT NULL DEFAULT false;
         ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
 
         CREATE POLICY "documents_select_scoped" ON public.documents
-            FOR SELECT USING (user_id IS NULL OR (requesting_user_id() IS NOT NULL AND requesting_user_id() = user_id));
+            FOR SELECT USING (is_canonical = TRUE OR (requesting_user_id() IS NOT NULL AND requesting_user_id() = user_id));
 
         CREATE POLICY "documents_manage_own" ON public.documents
             FOR ALL USING (requesting_user_id() IS NOT NULL AND requesting_user_id() = user_id);
     END IF;
 END $$;
+
+-- 12. USER DAILY USAGE & QUOTA ENFORCEMENT
+CREATE TABLE IF NOT EXISTS public.user_daily_usage (
+    user_id TEXT NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    usage_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    query_count INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, usage_date)
+);
+
+ALTER TABLE public.user_daily_usage ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "user_daily_usage_own" ON public.user_daily_usage
+    FOR ALL USING (requesting_user_id() IS NOT NULL AND requesting_user_id() = user_id);
+
+CREATE OR REPLACE FUNCTION public.check_query_quota(
+    p_user_id TEXT,
+    p_limit INT DEFAULT 10
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_today DATE := CURRENT_DATE;
+    v_count INT := 0;
+BEGIN
+    SELECT query_count INTO v_count
+    FROM public.user_daily_usage
+    WHERE user_id = p_user_id AND usage_date = v_today;
+
+    IF v_count IS NULL THEN
+        v_count := 0;
+    END IF;
+
+    IF p_limit > 0 AND v_count >= p_limit THEN
+        RETURN jsonb_build_object('allowed', false, 'count', v_count, 'limit', p_limit);
+    END IF;
+
+    RETURN jsonb_build_object('allowed', true, 'count', v_count, 'limit', p_limit);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.increment_query_usage(
+    p_user_id TEXT
+)
+RETURNS INT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_today DATE := CURRENT_DATE;
+    v_new_count INT;
+BEGIN
+    INSERT INTO public.user_daily_usage (user_id, usage_date, query_count)
+    VALUES (p_user_id, v_today, 1)
+    ON CONFLICT (user_id, usage_date)
+    DO UPDATE SET query_count = public.user_daily_usage.query_count + 1
+    RETURNING query_count INTO v_new_count;
+
+    RETURN v_new_count;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.check_query_quota(TEXT, INT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.check_query_quota(TEXT, INT) TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION public.increment_query_usage(TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.increment_query_usage(TEXT) TO authenticated, service_role;
+
+-- 13. COMPREHENSIVE SQL PRIVILEGES RECONCILIATION
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon;
+GRANT SELECT ON public.prayers TO anon; -- anon can read public community prayers under RLS is_community = true
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated, service_role;
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 
 COMMIT;

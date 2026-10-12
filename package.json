@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "node scripts/test-ai-engine.mjs"
+    "test": "node scripts/test-ai-engine.mjs && node scripts/test-security-and-rag.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.36.5",

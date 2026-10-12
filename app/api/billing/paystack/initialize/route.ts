@@ -28,15 +28,9 @@ export async function POST(req: NextRequest) {
 
         const userEmail = user?.emailAddresses?.[0]?.emailAddress || `${userId}@bible-rhema.com`;
 
-        // Determine canonical callback URL
-        const canonicalBase = process.env.NEXT_PUBLIC_APP_URL;
-        let origin = canonicalBase;
-        if (!origin) {
-            const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "localhost:3000";
-            const proto = req.headers.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https");
-            origin = `${proto}://${host}`;
-        }
-        const callbackUrl = `${origin}/pricing?status=verifying`;
+        // Determine canonical callback URL from trusted environment configuration
+        const origin = process.env.NEXT_PUBLIC_APP_URL || "https://bible-rhema-ai.vercel.app";
+        const callbackUrl = `${origin.replace(/\/$/, '')}/pricing?status=verifying`;
 
         const initResult = await initializePaystackTransaction({
             email: userEmail,

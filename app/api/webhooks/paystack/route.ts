@@ -39,9 +39,13 @@ export async function POST(req: NextRequest) {
 
                 if (!fulfillment.success) {
                     console.error("[PAYSTACK WEBHOOK] Fulfillment failed:", fulfillment.error);
-                } else {
-                    console.log(`[PAYSTACK WEBHOOK] Fulfillment succeeded for ${fulfillment.reference} (${fulfillment.tier})`);
+                    return NextResponse.json(
+                        { error: fulfillment.error || "Fulfillment could not be completed" },
+                        { status: fulfillment.statusCode || 500 }
+                    );
                 }
+
+                console.log(`[PAYSTACK WEBHOOK] Fulfillment succeeded for ${fulfillment.reference} (${fulfillment.tier})`);
                 break;
             }
 

@@ -2,51 +2,107 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
-const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const ALLOWED_ORIGINS = [
+    "https://bible-rhema-ai.vercel.app",
+    "http://localhost:3000",
+    "http://localhost:3001"
+];
+
+function getCorsHeaders(req: Request) {
+    const origin = req.headers.get("origin") || "";
+    const isAllowed = ALLOWED_ORIGINS.includes(origin) || origin.endsWith(".vercel.app");
+    return {
+        'Access-Control-Allow-Origin': isAllowed ? origin : ALLOWED_ORIGINS[0],
+        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    };
+}
 
 serve(async (req) => {
-    // Handle CORS
+    const corsHeaders = getCorsHeaders(req);
+
+    // Handle CORS preflight
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
 
     try {
-        const { prayer_id, request_text, user_profile } = await req.json();
+        const authHeader = req.headers.get('Authorization');
+        if (!authHeader) {
+            return new Response(JSON.stringify({ error: "Unauthorized: Authorization required" }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                status: 401,
+            });
+        }
 
-        // Initialize Supabase (Admin Context for AI writing)
+        // Extract user id from token payload if JWT
+        let callingUserId: string | null = null;
+        try {
+            const token = authHeader.replace('Bearer ', '').trim();
+            const parts = token.split('.');
+            if (parts.length === 3) {
+                const payload = JSON.parse(atob(parts[1]));
+                callingUserId = payload.sub || payload.userId || null;
+            }
+        } catch {
+            // Service role or custom bearer format
+        }
+
+        const { prayer_id, request_text, user_profile } = await req.json();
+        if (!prayer_id || !request_text) {
+            return new Response(JSON.stringify({ error: "prayer_id and request_text are required" }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                status: 400,
+            });
+        }
+
+        // Initialize Supabase
         const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
         const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
         const supabase = createClient(supabaseUrl, supabaseKey);
 
+        // Verify caller ownership if calling as user
+        if (callingUserId) {
+            const { data: existingPrayer, error: checkError } = await supabase
+                .from('prayers')
+                .select('user_id')
+                .eq('id', prayer_id)
+                .maybeSingle();
+
+            if (checkError || !existingPrayer) {
+                return new Response(JSON.stringify({ error: "Prayer not found" }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                    status: 404,
+                });
+            }
+
+            if (existingPrayer.user_id !== callingUserId) {
+                return new Response(JSON.stringify({ error: "Forbidden: Not permitted to modify this prayer strategy" }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                    status: 403,
+                });
+            }
+        }
+
         console.log(`Generating strategy for prayer: ${prayer_id}`);
 
-        // MOCK AI LOGIC (Replace with OpenAI/Gemini call later)
-        // Simple keyword matching for MVP
+        // Theological strategy generator based on biblical promises
         let strategy = "Stand firm in faith. Declare God's promises over this situation daily.";
         let scriptureRef = "Hebrews 11:1";
-        let scriptureText = "Now faith is the substance of things hoped for, the evidence of things not seen.";
 
         const lowerText = request_text.toLowerCase();
-
         if (lowerText.includes('heal') || lowerText.includes('sick') || lowerText.includes('pain')) {
             strategy = "Activate the healing covenant. Speak life over the physical body and command symptoms to bow to the name of Jesus.";
             scriptureRef = "Isaiah 53:5";
-            scriptureText = "But He was wounded for our transgressions, He was bruised for our iniquities; The chastisement for our peace was upon Him, And by His stripes we are healed.";
         } else if (lowerText.includes('money') || lowerText.includes('job') || lowerText.includes('finance') || lowerText.includes('provide')) {
             strategy = "Position yourself for provision. Sow a seed of faith and trust that God is your source, not the economy.";
             scriptureRef = "Philippians 4:19";
-            scriptureText = "And my God shall supply all your need according to His riches in glory by Christ Jesus.";
         } else if (lowerText.includes('fear') || lowerText.includes('anxiety') || lowerText.includes('worry')) {
             strategy = "Disarm the spirit of fear. It has no legal right to your mind. Replace every fearful thought with a promise of God.";
             scriptureRef = "2 Timothy 1:7";
-            scriptureText = "For God has not given us a spirit of fear, but of power and of love and of a sound mind.";
         } else if (lowerText.includes('family') || lowerText.includes('child') || lowerText.includes('marriage')) {
             strategy = "Build a hedge of protection. Plead the blood of Jesus over your household and decree peace within your walls.";
             scriptureRef = "Joshua 24:15";
-            scriptureText = "But as for me and my house, we will serve the Lord.";
         }
 
         // Update Prayer Record

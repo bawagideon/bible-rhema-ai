@@ -1,7 +1,8 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { detectScriptureReference, resolveScripturePassage, type ScriptureVerse } from "../bible/api-bible.ts";
-import { findLexicalMatches, type LexiconEntry } from "../bible/lexicon-database.ts";
+import { findLexicalMatches, BIBLICAL_LEXICON, type LexiconEntry } from "../bible/lexicon-database.ts";
 import { getVerifiedCrossReferences, type VerifiedCrossReference } from "../bible/cross-references.ts";
+import { searchTopicalConcordance, type TopicalConcordanceEntry } from "../bible/topical-concordance.ts";
 
 // Helper to get Gemini client dynamically
 export function getGenAIClient(): { client: GoogleGenerativeAI; modelName: string } | null {
@@ -79,33 +80,72 @@ export interface RetrievedEvidence {
 
 /**
  * Retrieve verified evidence before prompt execution (RAG Grounding Pipeline)
+ * Employs direct canonical reference matching, topical corpus semantic retrieval,
+ * Strong's lexical definitions, and Christocentric cross-references.
  */
 export async function retrieveStudyEvidence(query: string, preferredVersion: string = "ESV"): Promise<RetrievedEvidence> {
     const detectedRef = detectScriptureReference(query);
     let passage: ScriptureVerse | null = null;
     const sourcesUsed: string[] = [];
 
+    // 1. Direct Scripture Reference Matching
     if (detectedRef) {
         passage = await resolveScripturePassage(detectedRef, preferredVersion);
         if (passage) {
-            sourcesUsed.push(`Canonical Scripture: ${passage.reference} (${passage.translation})`);
+            sourcesUsed.push(`Scripture Locus: ${passage.reference} (${passage.translation})`);
         }
     }
 
+    // 2. Comprehensive Topical Concordance Corpus Search (Fallback when no direct reference detected)
+    let matchedTopic: TopicalConcordanceEntry | null = null;
+    if (!passage) {
+        const topicalMatches = searchTopicalConcordance(query, 2);
+        if (topicalMatches.length > 0) {
+            matchedTopic = topicalMatches[0];
+            passage = {
+                reference: matchedTopic.primaryPassage.reference,
+                translation: matchedTopic.primaryPassage.translation,
+                text: matchedTopic.primaryPassage.text,
+                source: 'canonical-cache',
+                attributionNote: `Topical Corpus: ${matchedTopic.topic}`
+            };
+            sourcesUsed.push(`Scripture Locus: ${matchedTopic.primaryPassage.reference} (${matchedTopic.primaryPassage.translation})`);
+        }
+    }
+
+    // 3. Strong's Original Language Lexical Matching
     const passageText = passage?.text || "";
     const keyTerms = findLexicalMatches(query, passageText);
+
+    // Merge linked Strong's terms from topical concordance entry if not already present
+    if (matchedTopic?.strongsTermKeys) {
+        for (const strongsKey of matchedTopic.strongsTermKeys) {
+            const entry = BIBLICAL_LEXICON[strongsKey.toLowerCase()];
+            if (entry && !keyTerms.some(k => k.strongs === entry.strongs)) {
+                keyTerms.push(entry);
+            }
+        }
+    }
+
     if (keyTerms.length > 0) {
-        sourcesUsed.push("Strong's Biblical Concordance & Theological Lexicon");
+        sourcesUsed.push(`Strong's Lexicon (${keyTerms.slice(0, 3).map(t => `${t.strongs} ${t.transliteration}`).join(", ")})`);
     }
 
+    // 4. Christocentric Cross-References
     const refForCross = passage?.reference || query;
-    const crossReferences = getVerifiedCrossReferences(refForCross, query);
-    if (crossReferences.length > 0) {
-        sourcesUsed.push("Treasury of Scripture Knowledge Cross-References");
-    }
+    let crossReferences = getVerifiedCrossReferences(refForCross, query);
 
-    if (sourcesUsed.length === 0) {
-        sourcesUsed.push("Christocentric Biblical Knowledge Base");
+    if (matchedTopic?.crossReferences) {
+        for (const cr of matchedTopic.crossReferences) {
+            if (!crossReferences.some(c => c.reference === cr.reference)) {
+                crossReferences.push(cr);
+            }
+        }
+    }
+    crossReferences = crossReferences.slice(0, 3);
+
+    if (crossReferences.length > 0) {
+        sourcesUsed.push(`Cross-References (${crossReferences.map(c => c.reference).join(", ")})`);
     }
 
     return {
@@ -113,6 +153,59 @@ export async function retrieveStudyEvidence(query: string, preferredVersion: str
         keyTerms,
         crossReferences,
         sourcesUsed
+    };
+}
+
+export interface CitationValidationResult {
+    isGrounded: boolean;
+    citedReferences: string[];
+    lexicalTermsCited: string[];
+    citationConfidence: number;
+}
+
+/**
+ * Validates post-generation model response against retrieved grounding evidence
+ */
+export function validateGroundedCitations(content: string, evidence: RetrievedEvidence): CitationValidationResult {
+    if (!evidence.passage) {
+        return { isGrounded: false, citedReferences: [], lexicalTermsCited: [], citationConfidence: 0 };
+    }
+
+    const textLower = content.toLowerCase();
+    const citedRefs: string[] = [];
+    const citedTerms: string[] = [];
+
+    // Check primary passage citation
+    const targetRef = evidence.passage.reference.toLowerCase();
+    const bookAndChapter = targetRef.split(':')[0];
+    if (textLower.includes(targetRef) || textLower.includes(bookAndChapter)) {
+        citedRefs.push(evidence.passage.reference);
+    }
+
+    // Check cross references
+    for (const cross of evidence.crossReferences) {
+        const crossLower = cross.reference.toLowerCase();
+        const crossBookAndChapter = crossLower.split(':')[0];
+        if (textLower.includes(crossLower) || textLower.includes(crossBookAndChapter)) {
+            citedRefs.push(cross.reference);
+        }
+    }
+
+    // Check original lexical terms
+    for (const term of evidence.keyTerms) {
+        if (textLower.includes(term.transliteration.toLowerCase()) || textLower.includes(term.term.toLowerCase())) {
+            citedTerms.push(term.term);
+        }
+    }
+
+    const totalExpected = 1 + evidence.crossReferences.length;
+    const citationConfidence = citedRefs.length > 0 ? Math.min(1, citedRefs.length / totalExpected) : 0;
+
+    return {
+        isGrounded: citedRefs.length > 0,
+        citedReferences: citedRefs,
+        lexicalTermsCited: citedTerms,
+        citationConfidence
     };
 }
 
@@ -200,15 +293,15 @@ STRICT INSTRUCTION: Your exegesis must directly interpret and cite this retrieve
             const rawText = result.response.text();
             const finalContent = crisisAlert ? `${crisisAlert}\n\n${rawText}` : rawText;
 
-            const passageFocus = evidence.passage?.reference || (mode === 'exegesis' ? "The Living Word" : "Daily Devotional Walk");
+            const passageFocus = evidence.passage?.reference || "";
             const followUps = mode === 'exegesis' ? [
-                `How does ${passageFocus} connect to the broader covenant narrative?`,
+                passageFocus ? `How does ${passageFocus} connect to the broader covenant narrative?` : "How does this biblical theme connect across the covenants?",
                 `What is the original historical situation of the author and audience?`,
-                `How does this passage point to the person and work of Christ Jesus?`
+                `How does this truth point to the person and work of Christ Jesus?`
             ] : [
                 `How does this truth apply to what I am facing today?`,
                 `What is one practical step of obedience the Holy Spirit is highlighting?`,
-                `How can I pray this passage over my family and community?`
+                `How can I pray this truth over my family and community?`
             ];
 
             return {
@@ -217,7 +310,7 @@ STRICT INSTRUCTION: Your exegesis must directly interpret and cite this retrieve
                     query,
                     mode,
                     passageFocus,
-                    passageSummary: evidence.passage?.text.slice(0, 160) + "..." || `A Christ-centered exploration of ${passageFocus}.`,
+                    passageSummary: evidence.passage ? (evidence.passage.text.length > 160 ? evidence.passage.text.slice(0, 160) + "..." : evidence.passage.text) : "",
                     keyTerms: evidence.keyTerms.map(t => ({
                         term: t.term,
                         original: `${t.original} (${t.transliteration})`,
@@ -245,8 +338,8 @@ STRICT INSTRUCTION: Your exegesis must directly interpret and cite this retrieve
         context: {
             query,
             mode,
-            passageFocus: evidence.passage?.reference || (mode === 'exegesis' ? "Hebrews 4:12" : "Matthew 11:28"),
-            passageSummary: evidence.passage?.text.slice(0, 160) || "The living and active Word of God, profitable for teaching and righteousness.",
+            passageFocus: evidence.passage?.reference || "",
+            passageSummary: evidence.passage ? (evidence.passage.text.length > 160 ? evidence.passage.text.slice(0, 160) + "..." : evidence.passage.text) : "",
             keyTerms: evidence.keyTerms.map(t => ({
                 term: t.term,
                 original: `${t.original} (${t.transliteration})`,
@@ -289,22 +382,22 @@ export async function streamSpiritOSStudy(
     const ai = getGenAIClient();
     const evidence = await retrieveStudyEvidence(query, preferredVersion);
 
-    const passageFocus = evidence.passage?.reference || (mode === 'exegesis' ? "Hebrews 4:12" : "Matthew 11:28");
+    const passageFocus = evidence.passage?.reference || "";
     const followUps = mode === 'exegesis' ? [
-        `How does ${passageFocus} connect to the broader covenant narrative?`,
+        passageFocus ? `How does ${passageFocus} connect to the broader covenant narrative?` : "How does this biblical theme connect across the covenants?",
         `What is the original historical situation of the author and audience?`,
-        `How does this passage point to the person and work of Christ Jesus?`
+        `How does this truth point to the person and work of Christ Jesus?`
     ] : [
         `How does this truth apply to what I am facing today?`,
         `What is one practical step of obedience the Holy Spirit is highlighting?`,
-        `How can I pray this passage over my family and community?`
+        `How can I pray this truth over my family and community?`
     ];
 
     const contextData: StudyContextData = {
         query,
         mode,
         passageFocus,
-        passageSummary: evidence.passage?.text.slice(0, 160) + "..." || `A Christ-centered exploration of ${passageFocus}.`,
+        passageSummary: evidence.passage ? (evidence.passage.text.length > 160 ? evidence.passage.text.slice(0, 160) + "..." : evidence.passage.text) : "",
         keyTerms: evidence.keyTerms.map(t => ({
             term: t.term,
             original: `${t.original} (${t.transliteration})`,
@@ -364,8 +457,10 @@ STRICT INSTRUCTION: Your response must directly interpret and cite this retrieve
                                 controller.enqueue(encoder.encode(chunkText));
                             }
                         }
-                    } catch (err) {
+                    } catch (err: any) {
                         console.error("Stream generation error:", err);
+                        const errMessage = err?.message || "Internal streaming error";
+                        controller.enqueue(encoder.encode(`\n\n[ERROR: Stream interrupted: ${errMessage}]\n`));
                     } finally {
                         controller.close();
                     }

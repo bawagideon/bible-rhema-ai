@@ -38,23 +38,38 @@ export function RightPanel() {
                 if (activeStudyContext) {
                     return (
                         <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-                            {/* 1. Passage in Focus */}
+                            {/* 1. Passage in Focus / Topical Inquiry */}
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                     <h3 className="text-[11px] uppercase tracking-widest text-[#D4AF37] font-bold flex items-center gap-1.5">
-                                        <BookOpen className="h-3.5 w-3.5" /> Passage Focus
+                                        <BookOpen className="h-3.5 w-3.5" /> {activeStudyContext.isGrounded && activeStudyContext.passageFocus ? "Passage Focus" : "Theological Inquiry"}
                                     </h3>
                                     <Badge variant="outline" className="text-[10px] border-[#D4AF37]/30 text-[#D4AF37] uppercase">
-                                        {activeStudyContext.mode}
+                                        {activeStudyContext.isGrounded ? activeStudyContext.mode : "Topical Synthesis"}
                                     </Badge>
                                 </div>
                                 <div className="bg-card/40 p-3.5 rounded-lg border border-border/60 space-y-2">
-                                    <h4 className="font-serif text-lg text-foreground font-semibold">
-                                        {activeStudyContext.passageFocus}
-                                    </h4>
-                                    <p className="text-xs text-muted-foreground leading-relaxed">
-                                        {activeStudyContext.passageSummary}
-                                    </p>
+                                    {activeStudyContext.isGrounded && activeStudyContext.passageFocus ? (
+                                        <>
+                                            <h4 className="font-serif text-lg text-foreground font-semibold">
+                                                {activeStudyContext.passageFocus}
+                                            </h4>
+                                            <p className="text-xs text-muted-foreground leading-relaxed">
+                                                {activeStudyContext.passageSummary}
+                                            </p>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="flex items-center gap-1.5">
+                                                <Badge variant="secondary" className="text-[10px] bg-muted/60 text-muted-foreground font-sans">
+                                                    General Theological Inquiry
+                                                </Badge>
+                                            </div>
+                                            <p className="text-xs text-muted-foreground leading-relaxed">
+                                                "{activeStudyContext.query}" — Synthesizing systematic theology, historical covenants, and biblical principles.
+                                            </p>
+                                        </>
+                                    )}
                                 </div>
                             </div>
 

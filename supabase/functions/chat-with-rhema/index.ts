@@ -3,25 +3,47 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { GoogleGenerativeAI } from 'https://esm.sh/@google/generative-ai';
 
-// CORS headers
-const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const ALLOWED_ORIGINS = [
+    "https://bible-rhema-ai.vercel.app",
+    "http://localhost:3000",
+    "http://localhost:3001"
+];
+
+function getCorsHeaders(req: Request) {
+    const origin = req.headers.get("origin") || "";
+    const isAllowed = ALLOWED_ORIGINS.includes(origin) || origin.endsWith(".vercel.app");
+    return {
+        'Access-Control-Allow-Origin': isAllowed ? origin : ALLOWED_ORIGINS[0],
+        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    };
+}
 
 Deno.serve(async (req) => {
-    // Handle CORS
+    const corsHeaders = getCorsHeaders(req);
+
+    // Handle CORS preflight
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
 
     try {
+        const authHeader = req.headers.get('Authorization');
+        if (!authHeader) {
+            return new Response(JSON.stringify({ error: "Unauthorized: Authentication required" }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                status: 401,
+            });
+        }
+
         const { query } = await req.json();
-        if (!query) throw new Error('Query is required');
+        if (!query || typeof query !== 'string' || !query.trim()) {
+            throw new Error('Valid query string is required');
+        }
 
         // 1. Init Clients
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-        const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!; // Or SERVICE_ROLE if RLS restricted
+        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_ANON_KEY')!;
         const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY')!;
 
         const supabase = createClient(supabaseUrl, supabaseKey);
@@ -33,9 +55,7 @@ Deno.serve(async (req) => {
         const queryEmbedding = embeddingResult.embedding.values;
 
         // 2a. Fetch User Profile for Context
-        const authHeader = req.headers.get('Authorization');
         let userProfile = null;
-
         if (authHeader) {
             try {
                 // Manually decode Clerk JWT to get 'sub' (User ID)
@@ -96,8 +116,9 @@ ${contextText}
 User Question: ${query}
 `;
 
-        // 5. Generate Response (Flash Lite)
-        const genModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+        // 5. Generate Response
+        const modelName = Deno.env.get('GEMINI_MODEL') || "gemini-2.5-flash";
+        const genModel = genAI.getGenerativeModel({ model: modelName });
         const result = await genModel.generateContentStream(systemPrompt);
 
         // 6. Stream Response
