@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import * as jose from "https://esm.sh/jose@5.9.6";
 
 const ALLOWED_ORIGINS = [
     "https://bible-rhema-ai.vercel.app",
@@ -43,19 +44,48 @@ serve(async (req) => {
         let callingUserId: string | null = null;
 
         if (!isServiceRole) {
+            // 1. Check native Supabase Auth session
             const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-            const authClient = createClient(supabaseUrl, supabaseAnonKey, {
-                auth: { persistSession: false }
-            });
+            if (supabaseAnonKey) {
+                try {
+                    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+                        auth: { persistSession: false }
+                    });
+                    const { data: userData } = await authClient.auth.getUser(token);
+                    if (userData?.user?.id) {
+                        callingUserId = userData.user.id;
+                    }
+                } catch {
+                    // Fall through to Clerk verification
+                }
+            }
 
-            const { data: userData, error: userError } = await authClient.auth.getUser(token);
-            if (userError || !userData?.user?.id) {
+            // 2. Check Clerk JWT with cryptographic JWKS or secret verification
+            if (!callingUserId) {
+                try {
+                    const decoded = jose.decodeJwt(token);
+                    if (decoded?.sub && decoded?.iss) {
+                        const iss = decoded.iss.replace(/\/$/, '');
+                        if (iss.includes('clerk') || iss.includes('clerk.accounts.dev')) {
+                            const jwksUrl = new URL(`${iss}/.well-known/jwks.json`);
+                            const JWKS = jose.createRemoteJWKSet(jwksUrl);
+                            const { payload } = await jose.jwtVerify(token, JWKS);
+                            if (payload?.sub) {
+                                callingUserId = payload.sub as string;
+                            }
+                        }
+                    }
+                } catch (clerkErr) {
+                    console.warn("[EDGE AUTH] Clerk JWKS verification failed:", clerkErr?.message);
+                }
+            }
+
+            if (!callingUserId) {
                 return new Response(JSON.stringify({ error: "Unauthorized: Invalid or unverified token" }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                     status: 401,
                 });
             }
-            callingUserId = userData.user.id;
         }
 
         const { prayer_id, request_text, user_profile } = await req.json();

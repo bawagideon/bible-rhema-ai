@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
         const userTier = profile?.tier || 'SEEKER';
         const preferredVersion = profile?.preferred_bible_version || 'ESV';
 
-        // 6. Enforce Seeker Tier Daily Quota Atomically (Max 10 studies/day)
+        // 6. Enforce Seeker Tier Daily Quota Atomically (Max 10 studies/day) - Fail Closed
         let quotaReserved = false;
         if (userTier === 'SEEKER') {
             const { data: quotaResult, error: quotaErr } = await supabase.rpc('reserve_query_quota', {
@@ -80,7 +80,14 @@ export async function POST(req: NextRequest) {
                 p_limit: 10
             });
 
-            if (!quotaErr && quotaResult && quotaResult.allowed === false) {
+            if (quotaErr || !quotaResult || typeof quotaResult !== 'object') {
+                console.error("[SPIRITOS QUOTA ERROR] Failed to reserve quota slot:", quotaErr);
+                return NextResponse.json({
+                    error: "Unable to verify daily study quota. Please try again in a few moments."
+                }, { status: 500 });
+            }
+
+            if (quotaResult.allowed === false) {
                 return NextResponse.json({
                     error: "Daily study limit reached (10 queries/day on Seeker tier). Upgrade your plan to Disciple for unlimited SpiritOS studies.",
                     limitExceeded: true,
@@ -88,6 +95,7 @@ export async function POST(req: NextRequest) {
                     tier: userTier
                 }, { status: 429 });
             }
+
             quotaReserved = true;
         }
 

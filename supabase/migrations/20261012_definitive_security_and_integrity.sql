@@ -19,10 +19,9 @@ $$ LANGUAGE SQL STABLE;
 
 CREATE OR REPLACE FUNCTION is_service_role()
 RETURNS BOOLEAN AS $$
-    SELECT COALESCE(
-        current_setting('role', true) = 'service_role',
-        current_setting('request.jwt.claim.role', true) = 'service_role',
-        current_user IN ('postgres', 'service_role', 'supabase_admin')
+    SELECT (
+        current_setting('role', true) = 'service_role' OR
+        current_setting('request.jwt.claim.role', true) = 'service_role'
     );
 $$ LANGUAGE SQL STABLE;
 
@@ -165,7 +164,7 @@ CREATE POLICY "prayer_intercessions_insert_own" ON public.prayer_intercessions
     FOR INSERT WITH CHECK (requesting_user_id() IS NOT NULL AND requesting_user_id() = user_id);
 
 -- ATOMIC, SECURE PRAYER INTERCESSION RPC FUNCTION
--- Blocks spoofing: caller MUST be authenticated, and caller MUST match p_user_id
+-- Restricted strictly to service_role (invoked via server-side API route)
 CREATE OR REPLACE FUNCTION public.increment_prayer_intercession(p_prayer_id UUID, p_user_id TEXT)
 RETURNS BOOLEAN
 LANGUAGE plpgsql
@@ -175,26 +174,18 @@ AS $$
 DECLARE
     v_is_community BOOLEAN;
     v_status TEXT;
-    v_caller TEXT;
 BEGIN
+    -- Only trusted backend services can execute intercession increments
+    IF NOT is_service_role() THEN
+        RAISE EXCEPTION 'FORBIDDEN: increment_prayer_intercession can only be executed by service_role';
+    END IF;
+
     IF p_user_id IS NULL OR trim(p_user_id) = '' THEN
         RAISE EXCEPTION 'INVALID_ARGUMENT: User ID cannot be null or empty';
     END IF;
 
     IF p_prayer_id IS NULL THEN
         RAISE EXCEPTION 'INVALID_ARGUMENT: Prayer ID cannot be null';
-    END IF;
-
-    -- If caller is not service_role, enforce requesting_user_id matches p_user_id
-    IF NOT is_service_role() THEN
-        v_caller := requesting_user_id();
-        IF v_caller IS NULL THEN
-            RAISE EXCEPTION 'UNAUTHENTICATED: Caller identity is missing or unverified';
-        END IF;
-
-        IF v_caller <> p_user_id THEN
-            RAISE EXCEPTION 'UNAUTHORIZED: Caller ID % does not match target user ID %', v_caller, p_user_id;
-        END IF;
     END IF;
 
     SELECT is_community, status INTO v_is_community, v_status
@@ -224,9 +215,9 @@ BEGIN
 END;
 $$;
 
--- Strict RPC execution permissions: REVOKE from anon/public
-REVOKE ALL ON FUNCTION public.increment_prayer_intercession(UUID, TEXT) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.increment_prayer_intercession(UUID, TEXT) TO authenticated, service_role;
+-- Strict RPC execution permissions: REVOKE from public, anon, and authenticated; GRANT strictly to service_role
+REVOKE ALL ON FUNCTION public.increment_prayer_intercession(UUID, TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.increment_prayer_intercession(UUID, TEXT) TO service_role;
 
 -- 5. SERMONS TABLE
 CREATE TABLE IF NOT EXISTS public.sermons (
@@ -380,11 +371,9 @@ BEGIN
         RAISE EXCEPTION 'INVALID_ARGUMENT: User ID cannot be null or empty';
     END IF;
 
-    -- If caller is not service_role, enforce requesting_user_id matches p_user_id
+    -- Restricted strictly to service_role (called from server-side activity tracker)
     IF NOT is_service_role() THEN
-        IF requesting_user_id() IS NULL OR requesting_user_id() <> p_user_id THEN
-            RAISE EXCEPTION 'UNAUTHORIZED: Cannot record activity for another user';
-        END IF;
+        RAISE EXCEPTION 'FORBIDDEN: record_atomic_user_activity can only be executed by service_role';
     END IF;
 
     SELECT * INTO v_stats
@@ -474,6 +463,10 @@ AS $$
 DECLARE
     v_tx public.payment_transactions%ROWTYPE;
 BEGIN
+    IF NOT is_service_role() THEN
+        RAISE EXCEPTION 'FORBIDDEN: fulfill_subscription_payment can only be executed by service_role';
+    END IF;
+
     -- Strict input validation
     IF p_reference IS NULL OR trim(p_reference) = '' THEN
         RAISE EXCEPTION 'INVALID_ARGUMENT: Payment reference cannot be null or empty';
@@ -605,6 +598,10 @@ DECLARE
     v_today DATE := CURRENT_DATE;
     v_current_count INT;
 BEGIN
+    IF NOT is_service_role() THEN
+        RAISE EXCEPTION 'FORBIDDEN: reserve_query_quota can only be executed by service_role';
+    END IF;
+
     IF p_user_id IS NULL OR trim(p_user_id) = '' THEN
         RAISE EXCEPTION 'INVALID_ARGUMENT: User ID cannot be null or empty';
     END IF;
@@ -658,6 +655,10 @@ DECLARE
     v_today DATE := CURRENT_DATE;
     v_count INT;
 BEGIN
+    IF NOT is_service_role() THEN
+        RAISE EXCEPTION 'FORBIDDEN: refund_query_quota can only be executed by service_role';
+    END IF;
+
     IF p_user_id IS NULL OR trim(p_user_id) = '' THEN
         RETURN 0;
     END IF;
