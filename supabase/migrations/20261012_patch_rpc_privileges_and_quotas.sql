@@ -245,7 +245,21 @@ $$;
 REVOKE ALL ON FUNCTION public.fulfill_subscription_payment FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.fulfill_subscription_payment TO service_role;
 
--- 5. DAILY QUOTA RESERVATION & REFUND (Strictly service_role)
+-- 5. DAILY QUOTA RESERVATION & REFUND WITH CONCURRENCY-SAFE IDEMPOTENT LEDGER
+CREATE TABLE IF NOT EXISTS public.user_quota_reservations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    usage_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'refunded', 'consumed')),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.user_quota_reservations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "user_quota_reservations_own" ON public.user_quota_reservations
+    FOR ALL USING (requesting_user_id() IS NOT NULL AND requesting_user_id() = user_id);
+
 CREATE OR REPLACE FUNCTION public.reserve_query_quota(
     p_user_id TEXT,
     p_limit INT DEFAULT 10
@@ -258,6 +272,7 @@ AS $$
 DECLARE
     v_today DATE := CURRENT_DATE;
     v_current_count INT;
+    v_reservation_id UUID;
 BEGIN
     IF NOT is_service_role() THEN
         RAISE EXCEPTION 'FORBIDDEN: reserve_query_quota can only be executed by service_role';
@@ -288,6 +303,11 @@ BEGIN
         );
     END IF;
 
+    -- Generate unique reservation ID and record active reservation in ledger
+    v_reservation_id := gen_random_uuid();
+    INSERT INTO public.user_quota_reservations (id, user_id, usage_date, status)
+    VALUES (v_reservation_id, p_user_id, v_today, 'active');
+
     UPDATE public.user_daily_usage
     SET query_count = query_count + 1
     WHERE user_id = p_user_id AND usage_date = v_today
@@ -296,19 +316,25 @@ BEGIN
     RETURN jsonb_build_object(
         'allowed', true,
         'count', v_current_count,
-        'limit', p_limit
+        'limit', p_limit,
+        'reservation_id', v_reservation_id
     );
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION public.refund_query_quota(p_user_id TEXT)
-RETURNS INT
+-- ATOMIC, IDEMPOTENT QUOTA REFUND RPC
+CREATE OR REPLACE FUNCTION public.refund_query_quota(
+    p_user_id TEXT,
+    p_reservation_id UUID DEFAULT NULL
+)
+RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
     v_today DATE := CURRENT_DATE;
+    v_res public.user_quota_reservations%ROWTYPE;
     v_count INT;
 BEGIN
     IF NOT is_service_role() THEN
@@ -316,7 +342,27 @@ BEGIN
     END IF;
 
     IF p_user_id IS NULL OR trim(p_user_id) = '' THEN
-        RETURN 0;
+        RETURN jsonb_build_object('refunded', false, 'reason', 'invalid_user');
+    END IF;
+
+    -- If a specific reservation ID is provided, verify it is active and belongs to user
+    IF p_reservation_id IS NOT NULL THEN
+        SELECT * INTO v_res
+        FROM public.user_quota_reservations
+        WHERE id = p_reservation_id AND user_id = p_user_id
+        FOR UPDATE;
+
+        IF NOT FOUND THEN
+            RETURN jsonb_build_object('refunded', false, 'reason', 'reservation_not_found');
+        END IF;
+
+        IF v_res.status <> 'active' THEN
+            RETURN jsonb_build_object('refunded', false, 'already_processed', true, 'status', v_res.status);
+        END IF;
+
+        UPDATE public.user_quota_reservations
+        SET status = 'refunded', updated_at = NOW()
+        WHERE id = p_reservation_id;
     END IF;
 
     UPDATE public.user_daily_usage
@@ -324,14 +370,18 @@ BEGIN
     WHERE user_id = p_user_id AND usage_date = v_today
     RETURNING query_count INTO v_count;
 
-    RETURN COALESCE(v_count, 0);
+    RETURN jsonb_build_object(
+        'refunded', true,
+        'reservation_id', p_reservation_id,
+        'current_count', COALESCE(v_count, 0)
+    );
 END;
 $$;
 
 REVOKE ALL ON FUNCTION public.reserve_query_quota(TEXT, INT) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.reserve_query_quota(TEXT, INT) TO service_role;
 
-REVOKE ALL ON FUNCTION public.refund_query_quota(TEXT) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.refund_query_quota(TEXT) TO service_role;
+REVOKE ALL ON FUNCTION public.refund_query_quota(TEXT, UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.refund_query_quota(TEXT, UUID) TO service_role;
 
 COMMIT;

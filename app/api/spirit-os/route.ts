@@ -74,6 +74,7 @@ export async function POST(req: NextRequest) {
 
         // 6. Enforce Seeker Tier Daily Quota Atomically (Max 10 studies/day) - Fail Closed
         let quotaReserved = false;
+        let reservationId: string | null = null;
         if (userTier === 'SEEKER') {
             const { data: quotaResult, error: quotaErr } = await supabase.rpc('reserve_query_quota', {
                 p_user_id: userId,
@@ -96,7 +97,16 @@ export async function POST(req: NextRequest) {
                 }, { status: 429 });
             }
 
+            // Strictly require allowed === true; reject any unexpected or malformed payload
+            if (quotaResult.allowed !== true) {
+                console.error("[SPIRITOS QUOTA ERROR] Malformed quota response:", quotaResult);
+                return NextResponse.json({
+                    error: "Unable to confirm study quota. Please try again."
+                }, { status: 500 });
+            }
+
             quotaReserved = true;
+            reservationId = quotaResult.reservation_id || null;
         }
 
         // 7. Generate Real Grounded Stream with Native Model Streaming
@@ -112,7 +122,10 @@ export async function POST(req: NextRequest) {
             // Refund reserved quota if generation failed before delivering stream
             if (quotaReserved) {
                 try {
-                    await supabase.rpc('refund_query_quota', { p_user_id: userId });
+                    await supabase.rpc('refund_query_quota', {
+                        p_user_id: userId,
+                        p_reservation_id: reservationId
+                    });
                 } catch {
                     // Suppress cleanup error
                 }

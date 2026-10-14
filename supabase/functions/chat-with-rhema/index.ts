@@ -20,6 +20,36 @@ function getCorsHeaders(req: Request) {
     };
 }
 
+function getTrustedClerkIssuer(): string | null {
+    const configuredIssuer = Deno.env.get('CLERK_ISSUER_URL');
+    if (configuredIssuer) {
+        return configuredIssuer.replace(/\/$/, '');
+    }
+
+    const frontendApi = Deno.env.get('CLERK_FRONTEND_API');
+    if (frontendApi) {
+        return `https://${frontendApi.replace(/\/$/, '')}`;
+    }
+
+    const publishableKey = Deno.env.get('NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY') || Deno.env.get('CLERK_PUBLISHABLE_KEY');
+    if (publishableKey) {
+        const parts = publishableKey.trim().split('_');
+        if (parts.length >= 3) {
+            try {
+                const b64 = parts.slice(2).join('_').replace(/[\$=]/g, '');
+                const domain = atob(b64).replace(/[\$\x00-\x1F\x7F-\x9F]/g, '').trim();
+                if (domain && domain.includes('.')) {
+                    return `https://${domain}`;
+                }
+            } catch {
+                // Ignore decoding errors
+            }
+        }
+    }
+
+    return null;
+}
+
 Deno.serve(async (req) => {
     const corsHeaders = getCorsHeaders(req);
 
@@ -61,23 +91,24 @@ Deno.serve(async (req) => {
                 }
             }
 
-            // 2. Check Clerk JWT with cryptographic JWKS or secret verification
+            // 2. Check Clerk JWT using ONLY the trusted server-configured issuer
             if (!userId) {
-                try {
-                    const decoded = jose.decodeJwt(token);
-                    if (decoded?.sub && decoded?.iss) {
-                        const iss = decoded.iss.replace(/\/$/, '');
-                        if (iss.includes('clerk') || iss.includes('clerk.accounts.dev')) {
-                            const jwksUrl = new URL(`${iss}/.well-known/jwks.json`);
-                            const JWKS = jose.createRemoteJWKSet(jwksUrl);
-                            const { payload } = await jose.jwtVerify(token, JWKS);
-                            if (payload?.sub) {
-                                userId = payload.sub as string;
-                            }
+                const trustedIssuer = getTrustedClerkIssuer();
+                if (trustedIssuer) {
+                    try {
+                        const jwksUrl = new URL(`${trustedIssuer}/.well-known/jwks.json`);
+                        const JWKS = jose.createRemoteJWKSet(jwksUrl);
+                        const { payload } = await jose.jwtVerify(token, JWKS, {
+                            issuer: trustedIssuer
+                        });
+                        if (payload?.sub) {
+                            userId = payload.sub as string;
                         }
+                    } catch (clerkErr) {
+                        console.warn("[EDGE AUTH] Clerk cryptographic verification failed:", clerkErr?.message);
                     }
-                } catch (clerkErr) {
-                    console.warn("[EDGE AUTH] Clerk JWKS verification failed:", clerkErr?.message);
+                } else {
+                    console.warn("[EDGE AUTH] No trusted Clerk issuer configured in environment (CLERK_ISSUER_URL or NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)");
                 }
             }
 
