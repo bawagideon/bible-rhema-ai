@@ -38,6 +38,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { GlobalAudioPlayer } from "@/components/layout/global-audio-player";
+import { OfflineBanner } from "@/components/system/offline-banner";
 
 interface ShellLayoutProps {
     children: React.ReactNode;
@@ -99,11 +100,11 @@ export function ShellLayout({ children }: ShellLayoutProps) {
     }, [user, getToken, pathname, router]);
 
     const navItems = [
-        { name: "Home", href: "/", icon: Home },
+        { name: "Today", href: "/", icon: Home },
         { name: "SpiritOS", href: "/spirit-os", icon: MessageCircle },
-        { name: "War Room", href: "/altar", icon: Flame },
+        { name: "Sermon Studio", href: "/studio", icon: Palette },
+        { name: "The Altar", href: "/altar", icon: Flame },
         { name: "Sanctuary", href: "/sanctuary", icon: Wind },
-        { name: "Studio", href: "/studio", icon: Palette },
         { name: "Library", href: "/library", icon: Library },
     ];
 
@@ -111,16 +112,16 @@ export function ShellLayout({ children }: ShellLayoutProps) {
     const isImmersive = pathname === '/sanctuary';
 
     return (
-        <div className="flex h-screen bg-background overflow-hidden relative">
+        <div className="flex h-screen bg-background overflow-hidden relative font-sans">
             {/* LEFT SIDEBAR (Desktop) */}
             <aside
                 className={cn(
-                    "hidden md:flex flex-col border-r border-border transition-all duration-500 ease-in-out z-20 bg-card/50 backdrop-blur-sm fixed md:relative h-full",
-                    isSidebarCollapsed ? "w-[60px]" : "w-[240px]",
+                    "hidden md:flex flex-col border-r border-border transition-all duration-500 ease-in-out z-20 bg-card/60 backdrop-blur-md fixed md:relative h-full",
+                    isSidebarCollapsed ? "w-[64px]" : "w-[240px]",
                     isImmersive && "-ml-[240px] opacity-0 pointer-events-none" // Slide out
                 )}
             >
-                <div className={cn("h-14 flex items-center px-3 border-b border-border", isSidebarCollapsed ? "justify-center" : "justify-between")}>
+                <div className={cn("h-16 flex items-center px-4 border-b border-border/60", isSidebarCollapsed ? "justify-center" : "justify-between")}>
                     {!isSidebarCollapsed ? (
                         <Link href="/" className="flex items-center gap-2 overflow-hidden py-1">
                             <BrandLogo variant="primary" />
@@ -133,7 +134,7 @@ export function ShellLayout({ children }: ShellLayoutProps) {
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
                         onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
                     >
                         {isSidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
@@ -141,7 +142,7 @@ export function ShellLayout({ children }: ShellLayoutProps) {
                 </div>
 
                 <ScrollArea className="flex-1 py-4">
-                    <nav className="space-y-1 px-2">
+                    <nav className="space-y-1.5 px-3">
                         <TooltipProvider delayDuration={0}>
                             {navItems.map((item) => {
                                 const isActive = pathname === item.href;
@@ -151,17 +152,19 @@ export function ShellLayout({ children }: ShellLayoutProps) {
                                             <Link
                                                 href={item.href}
                                                 className={cn(
-                                                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-muted hover:text-primary",
-                                                    isActive ? "bg-muted text-primary font-bold" : "text-muted-foreground",
+                                                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-xs font-medium transition-all group",
+                                                    isActive
+                                                        ? "bg-[#D4AF37]/15 text-[#D4AF37] font-semibold border border-[#D4AF37]/30 shadow-sm shadow-[#D4AF37]/5"
+                                                        : "text-muted-foreground hover:text-foreground hover:bg-muted/60",
                                                     isSidebarCollapsed && "justify-center px-2"
                                                 )}
                                             >
-                                                <item.icon className="h-5 w-5" />
-                                                {!isSidebarCollapsed && <span>{item.name}</span>}
+                                                <item.icon className={cn("h-4 w-4 shrink-0 transition-transform group-hover:scale-105", isActive ? "text-[#D4AF37]" : "text-muted-foreground group-hover:text-foreground")} />
+                                                {!isSidebarCollapsed && <span className="truncate">{item.name}</span>}
                                             </Link>
                                         </TooltipTrigger>
                                         {isSidebarCollapsed && (
-                                            <TooltipContent side="right" className="flex items-center gap-4">
+                                            <TooltipContent side="right" className="flex items-center gap-4 bg-[#141414] border-gray-800 text-white font-medium text-xs">
                                                 {item.name}
                                             </TooltipContent>
                                         )}
@@ -172,27 +175,37 @@ export function ShellLayout({ children }: ShellLayoutProps) {
                     </nav>
                 </ScrollArea>
 
-                <div className="p-4 border-t border-border">
+                <div className="p-3 border-t border-border/60 bg-card/40">
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <div className={cn("flex items-center gap-3 cursor-pointer hover:bg-muted/50 p-2 rounded-md transition-colors", isSidebarCollapsed && "justify-center")}>
-                                <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-xs ring-1 ring-primary/40 text-transform uppercase">
-                                    {(userName || 'B').charAt(0)}
+                            <div className={cn("flex items-center gap-3 cursor-pointer hover:bg-muted/60 p-2 rounded-xl transition-all border border-border/40", isSidebarCollapsed && "justify-center p-1.5")}>
+                                <div className="h-8 w-8 rounded-full bg-[#D4AF37]/15 flex items-center justify-center text-[#D4AF37] font-serif font-bold text-xs ring-1 ring-[#D4AF37]/40 uppercase shrink-0">
+                                    {(userName || user?.firstName || 'G').charAt(0)}
                                 </div>
                                 {!isSidebarCollapsed && (
-                                    <div className="flex flex-col overflow-hidden text-left">
-                                        <span className="text-sm font-medium truncate">{userName}</span>
-                                        <span className="text-xs text-muted-foreground truncate">{userRole || 'SEEKER'} Plan</span>
+                                    <div className="flex flex-col overflow-hidden text-left flex-1 min-w-0">
+                                        <span className="text-xs font-semibold truncate text-foreground">{userName || user?.firstName || 'Gideon'}</span>
+                                        <Link
+                                            href="/pricing"
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="text-[10px] text-[#D4AF37] hover:underline truncate font-medium flex items-center gap-1"
+                                        >
+                                            {userRole || 'SEEKER'} Plan · Upgrade
+                                        </Link>
                                     </div>
                                 )}
                             </div>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" className="w-[200px] ml-2">
-                            <DropdownMenuItem onClick={() => window.location.href = '/settings'}>
+                        <DropdownMenuContent align="start" className="w-[210px] ml-2 bg-[#141416] border-gray-800 text-white">
+                            <DropdownMenuItem onClick={() => router.push('/settings')} className="text-xs py-2 cursor-pointer focus:bg-[#D4AF37]/10 focus:text-[#D4AF37]">
                                 <Settings className="mr-2 h-4 w-4" />
-                                <span>Sanctuary Settings</span>
+                                <span>Profile & Preferences</span>
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => signOut()} className="text-red-500 focus:text-red-500 focus:bg-red-500/10">
+                            <DropdownMenuItem onClick={() => router.push('/pricing')} className="text-xs py-2 cursor-pointer focus:bg-[#D4AF37]/10 focus:text-[#D4AF37]">
+                                <Palette className="mr-2 h-4 w-4 text-[#D4AF37]" />
+                                <span>Plans & Upgrades</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => signOut()} className="text-xs py-2 cursor-pointer text-red-400 focus:text-red-400 focus:bg-red-500/10">
                                 <LogOut className="mr-2 h-4 w-4" />
                                 <span>Sign Out</span>
                             </DropdownMenuItem>
@@ -235,25 +248,37 @@ export function ShellLayout({ children }: ShellLayoutProps) {
                         </div>
                         <div className="p-4 border-t border-border space-y-3 bg-card/40">
                             <div className="flex items-center gap-3 px-2">
-                                <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-xs ring-1 ring-primary/40 text-transform uppercase">
-                                    {(userName || 'B').charAt(0)}
+                                <div className="h-8 w-8 rounded-full bg-[#D4AF37]/15 flex items-center justify-center text-[#D4AF37] font-serif font-bold text-xs ring-1 ring-[#D4AF37]/40 uppercase shrink-0">
+                                    {(userName || user?.firstName || 'G').charAt(0)}
                                 </div>
-                                <div className="flex flex-col overflow-hidden text-left">
-                                    <span className="text-sm font-medium truncate">{userName}</span>
-                                    <span className="text-xs text-muted-foreground truncate">{userRole || 'SEEKER'} Plan</span>
+                                <div className="flex flex-col overflow-hidden text-left flex-1 min-w-0">
+                                    <span className="text-xs font-semibold truncate text-foreground">{userName || user?.firstName || 'Gideon'}</span>
+                                    <Link
+                                        href="/pricing"
+                                        className="text-[10px] text-[#D4AF37] hover:underline truncate font-medium"
+                                    >
+                                        {userRole || 'SEEKER'} Plan · Upgrade
+                                    </Link>
                                 </div>
                             </div>
                             <div className="pt-2 border-t border-border/40 space-y-1">
                                 <Link
                                     href="/settings"
-                                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                                 >
                                     <Settings className="h-4 w-4" />
-                                    <span>Sanctuary Settings</span>
+                                    <span>Profile & Preferences</span>
+                                </Link>
+                                <Link
+                                    href="/pricing"
+                                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[#D4AF37] hover:bg-[#D4AF37]/10 transition-colors"
+                                >
+                                    <Palette className="h-4 w-4" />
+                                    <span>Plans & Upgrades</span>
                                 </Link>
                                 <button
                                     onClick={() => signOut()}
-                                    className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors text-left"
+                                    className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-red-400 hover:bg-red-500/10 transition-colors text-left"
                                 >
                                     <LogOut className="h-4 w-4" />
                                     <span>Sign Out</span>
@@ -274,6 +299,7 @@ export function ShellLayout({ children }: ShellLayoutProps) {
                 !isImmersive && "md:pt-0 pt-14", // Normal padding
                 isImmersive && "pt-0" // Full height in immersive
             )}>
+                <OfflineBanner />
                 {/* Header/Utility Bar for Center Stage - Option to toggle right panel */}
                 <header className={cn(
                     "h-14 border-b border-border/40 flex items-center justify-between px-6 bg-background/50 backdrop-blur-xl sticky top-0 z-10 transition-transform duration-500",

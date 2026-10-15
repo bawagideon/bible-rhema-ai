@@ -11,6 +11,8 @@ import { Plus, Flame, ScrollText, CheckCircle2, Users, HeartHandshake, Shield, S
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import Link from "next/link";
+import { cn } from "@/lib/utils";
 
 interface PrayerItem {
     id: string;
@@ -187,157 +189,415 @@ export default function AltarPage() {
     const activePrayers = myPrayers.filter(p => p.status === 'active');
     const answeredPrayers = myPrayers.filter(p => p.status === 'answered');
 
+    const [communityFilter, setCommunityFilter] = useState<'all' | 'needs_prayer' | 'praise'>('all');
+    const [quickTitle, setQuickTitle] = useState("");
+    const [quickScripture, setQuickScripture] = useState("");
+    const [quickIsCommunity, setQuickIsCommunity] = useState(false);
+    const [isQuickSubmitting, setIsQuickSubmitting] = useState(false);
+
+    const handleQuickAddPetition = async () => {
+        if (!quickTitle.trim()) {
+            toast.error("Please enter a petition");
+            return;
+        }
+        setIsQuickSubmitting(true);
+        try {
+            const res = await fetch('/api/prayers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: quickTitle.trim(),
+                    scripture_ref: quickScripture.trim() || undefined,
+                    is_community: quickIsCommunity,
+                    author_name: user?.firstName || 'Fellow Believer'
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                toast.success(quickIsCommunity ? "Placed on Community Prayer Wall!" : "Saved to your private altar!");
+                setQuickTitle("");
+                setQuickScripture("");
+                setQuickIsCommunity(false);
+                fetchAllData();
+            } else {
+                toast.error(data.error || "Failed to place prayer");
+            }
+        } catch (e: any) {
+            toast.error("Network error: " + e.message);
+        } finally {
+            setIsQuickSubmitting(false);
+        }
+    };
+
     return (
         <ShellLayout>
-            <div className="flex-1 space-y-8 p-4 md:p-8 pt-6 max-w-6xl mx-auto pb-24">
-                {/* Header with New Prayer Action */}
+            <div className="flex-1 space-y-8 p-4 md:p-8 pt-6 max-w-6xl mx-auto pb-24 font-sans">
+                {/* Header with New Prayer Action & 5m Timer */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
-                        <div className="flex items-center gap-2">
-                            <h1 className="text-3xl font-serif font-bold text-white tracking-tight">The Altar</h1>
-                            <Badge variant="outline" className="text-xs text-[#D4AF37] border-[#D4AF37]/30">
-                                War Room
-                            </Badge>
+                        <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-[10px] font-mono tracking-widest text-[#D4AF37] bg-[#D4AF37]/10 border border-[#D4AF37]/20 uppercase mb-1">
+                            PRAY · THE ALTAR
                         </div>
-                        <p className="text-xs text-muted-foreground mt-1">
+                        <h1 className="text-3xl font-serif font-bold text-white tracking-tight">The Altar</h1>
+                        <p className="text-xs text-muted-foreground mt-0.5">
                             Cast your cares, stand in the gap for other believers, and keep record of God's faithfulness.
                         </p>
                     </div>
 
-                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                        <DialogTrigger asChild>
-                            <Button className="bg-[#D4AF37] text-black hover:bg-[#b5952f] font-semibold">
-                                <Plus className="w-4 h-4 mr-2" />
-                                Lay on the Altar
+                    <div className="flex items-center gap-3">
+                        <Link href="/sanctuary">
+                            <Button variant="outline" size="sm" className="border-border text-foreground text-xs h-10 px-4">
+                                Start prayer time · 5 min
                             </Button>
-                        </DialogTrigger>
-                        <DialogContent className="bg-[#121212] border-gray-800 text-white max-w-lg">
-                            <DialogHeader>
-                                <DialogTitle className="text-xl font-serif text-[#D4AF37]">Lay a Request on the Altar</DialogTitle>
-                                <DialogDescription className="text-xs text-gray-400">
-                                    "Do not be anxious about anything, but in everything by prayer and petition..."
-                                </DialogDescription>
-                            </DialogHeader>
-                            <div className="space-y-4 pt-2">
-                                <div className="space-y-1">
-                                    <label className="text-xs text-gray-300 font-medium">Prayer Focus / Title *</label>
-                                    <Input
-                                        placeholder="What are you standing in faith for?"
-                                        value={newTitle}
-                                        onChange={(e) => setNewTitle(e.target.value)}
-                                        className="bg-[#1a1a1a] border-gray-700 text-white focus:border-[#D4AF37]"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-xs text-gray-300 font-medium">Supporting Scripture (Optional)</label>
-                                    <Input
-                                        placeholder="e.g. Isaiah 53:5, Matthew 18:19"
-                                        value={newScripture}
-                                        onChange={(e) => setNewScripture(e.target.value)}
-                                        className="bg-[#1a1a1a] border-gray-700 text-white focus:border-[#D4AF37]"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-xs text-gray-300 font-medium">Details & Petitions (Optional)</label>
-                                    <textarea
-                                        rows={4}
-                                        placeholder="Specific needs, dates, or promises you are claiming..."
-                                        value={newDescription}
-                                        onChange={(e) => setNewDescription(e.target.value)}
-                                        className="w-full rounded-md p-3 text-sm bg-[#1a1a1a] border border-gray-700 text-white placeholder:text-gray-600 focus:outline-none focus:border-[#D4AF37] resize-none"
-                                    />
-                                </div>
+                        </Link>
 
-                                {/* Community Opt-in Toggle */}
-                                <div className="p-3 rounded-lg border border-gray-800 bg-[#161616] flex items-start space-x-3">
-                                    <Checkbox
-                                        id="comm"
-                                        checked={isCommunity}
-                                        onCheckedChange={(checked) => setIsCommunity(Boolean(checked))}
-                                        className="mt-0.5"
-                                    />
-                                    <div className="space-y-0.5">
-                                        <label htmlFor="comm" className="text-xs font-semibold text-white cursor-pointer">
-                                            Share on Community Prayer Wall
-                                        </label>
-                                        <p className="text-[11px] text-gray-400">
-                                            If checked, believers across the platform can see and intercede for this prayer. If unchecked, it remains strictly private in your Secret Place.
-                                        </p>
+                        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                            <DialogTrigger asChild>
+                                <Button className="bg-[#D4AF37] text-black hover:bg-[#b5952f] font-semibold text-xs h-10 px-4 shadow-sm shadow-[#D4AF37]/20">
+                                    <Plus className="w-4 h-4 mr-1.5" />
+                                    New petition
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="bg-[#121214] border-gray-800 text-white max-w-lg">
+                                <DialogHeader>
+                                    <DialogTitle className="text-xl font-serif text-[#D4AF37]">Place a Petition on the Altar</DialogTitle>
+                                    <DialogDescription className="text-xs text-gray-400">
+                                        "Do not be anxious about anything, but in everything by prayer and petition with thanksgiving..."
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-4 pt-2">
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-gray-300 font-medium">Prayer Focus / Title *</label>
+                                        <Input
+                                            placeholder="What are you standing in faith for?"
+                                            value={newTitle}
+                                            onChange={(e) => setNewTitle(e.target.value)}
+                                            className="bg-[#1a1a1e] border-gray-700 text-white focus:border-[#D4AF37]"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-gray-300 font-medium">Supporting Scripture Anchor (Optional)</label>
+                                        <Input
+                                            placeholder="e.g. Philippians 4:6-7, Isaiah 53:5"
+                                            value={newScripture}
+                                            onChange={(e) => setNewScripture(e.target.value)}
+                                            className="bg-[#1a1a1e] border-gray-700 text-white focus:border-[#D4AF37]"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-gray-300 font-medium">Details & Specific Petitions (Optional)</label>
+                                        <textarea
+                                            rows={4}
+                                            placeholder="Specific needs, dates, or promises you are claiming..."
+                                            value={newDescription}
+                                            onChange={(e) => setNewDescription(e.target.value)}
+                                            className="w-full rounded-md p-3 text-sm bg-[#1a1a1e] border border-gray-700 text-white placeholder:text-gray-600 focus:outline-none focus:border-[#D4AF37] resize-none"
+                                        />
+                                    </div>
+
+                                    {/* Community Opt-in Toggle */}
+                                    <div className="p-3.5 rounded-xl border border-gray-800 bg-[#16161a] flex items-start space-x-3">
+                                        <Checkbox
+                                            id="comm"
+                                            checked={isCommunity}
+                                            onCheckedChange={(checked) => setIsCommunity(Boolean(checked))}
+                                            className="mt-0.5"
+                                        />
+                                        <div className="space-y-0.5">
+                                            <label htmlFor="comm" className="text-xs font-semibold text-white cursor-pointer">
+                                                Share with community
+                                            </label>
+                                            <p className="text-[11px] text-gray-400">
+                                                If checked, believers across Bible Rhema AI can see and pray with you. If unchecked, it remains strictly private in your secret place.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex justify-end gap-2 pt-2">
+                                        <Button variant="ghost" onClick={() => setIsDialogOpen(false)} className="text-gray-400 text-xs">
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            onClick={handleCreatePrayer}
+                                            disabled={isSubmitting}
+                                            className="bg-[#D4AF37] text-black hover:bg-[#b5952f] font-semibold text-xs"
+                                        >
+                                            {isSubmitting ? "Placing..." : "Place on Altar"}
+                                        </Button>
                                     </div>
                                 </div>
-
-                                <div className="flex justify-end gap-2 pt-2">
-                                    <Button variant="ghost" onClick={() => setIsDialogOpen(false)} className="text-gray-400">
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        onClick={handleCreatePrayer}
-                                        disabled={isSubmitting}
-                                        className="bg-[#D4AF37] text-black hover:bg-[#b5952f] font-semibold"
-                                    >
-                                        {isSubmitting ? "Placing..." : "Place on Altar"}
-                                    </Button>
-                                </div>
-                            </div>
-                        </DialogContent>
-                    </Dialog>
-                </div>
-
-                {/* Real Dynamic Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="p-5 rounded-xl border border-gray-800/80 bg-[#141414] flex items-center gap-4">
-                        <div className="p-3 bg-orange-500/10 rounded-full text-orange-500 border border-orange-500/20">
-                            <Flame className="w-5 h-5" />
-                        </div>
-                        <div>
-                            <div className="text-2xl font-bold font-serif text-white">{streakDays}</div>
-                            <div className="text-xs text-muted-foreground uppercase tracking-wider">Day Streak</div>
-                        </div>
-                    </div>
-
-                    <div className="p-5 rounded-xl border border-gray-800/80 bg-[#141414] flex items-center gap-4">
-                        <div className="p-3 bg-blue-500/10 rounded-full text-blue-400 border border-blue-500/20">
-                            <ScrollText className="w-5 h-5" />
-                        </div>
-                        <div>
-                            <div className="text-2xl font-bold font-serif text-white">{activePrayers.length}</div>
-                            <div className="text-xs text-muted-foreground uppercase tracking-wider">My Active Petitions</div>
-                        </div>
-                    </div>
-
-                    <div className="p-5 rounded-xl border border-gray-800/80 bg-[#141414] flex items-center gap-4">
-                        <div className="p-3 bg-[#D4AF37]/10 rounded-full text-[#D4AF37] border border-[#D4AF37]/30">
-                            <CheckCircle2 className="w-5 h-5" />
-                        </div>
-                        <div>
-                            <div className="text-2xl font-bold font-serif text-white">{answeredPrayers.length}</div>
-                            <div className="text-xs text-muted-foreground uppercase tracking-wider">Answered Testimonies</div>
-                        </div>
+                            </DialogContent>
+                        </Dialog>
                     </div>
                 </div>
 
-                {/* Altar Tabs: Community vs Secret Place */}
-                <Tabs defaultValue="community" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 bg-[#161616] border border-gray-800 p-1 rounded-xl">
-                        <TabsTrigger value="community" className="data-[state=active]:bg-[#D4AF37] data-[state=active]:text-black text-gray-300 font-medium flex items-center gap-2">
-                            <Users className="w-4 h-4" />
-                            Community Prayer Wall
+                {/* 3 Tabs: My petitions, Community, Answered (Screen 4 & 5) */}
+                <Tabs defaultValue="my_petitions" className="w-full">
+                    <TabsList className="grid w-full grid-cols-3 bg-[#16161a] border border-gray-800 p-1 rounded-xl">
+                        <TabsTrigger value="my_petitions" className="data-[state=active]:bg-[#D4AF37] data-[state=active]:text-black text-xs font-semibold">
+                            My petitions · {activePrayers.length}
                         </TabsTrigger>
-                        <TabsTrigger value="private" className="data-[state=active]:bg-[#D4AF37] data-[state=active]:text-black text-gray-300 font-medium flex items-center gap-2">
-                            <Shield className="w-4 h-4" />
-                            My Secret Place ({myPrayers.length})
+                        <TabsTrigger value="community" className="data-[state=active]:bg-[#D4AF37] data-[state=active]:text-black text-xs font-semibold">
+                            Community
+                        </TabsTrigger>
+                        <TabsTrigger value="answered" className="data-[state=active]:bg-[#D4AF37] data-[state=active]:text-black text-xs font-semibold">
+                            Answered · {answeredPrayers.length}
                         </TabsTrigger>
                     </TabsList>
 
-                    {/* COMMUNITY FEED */}
-                    <TabsContent value="community" className="mt-6 space-y-4">
-                        <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
-                            <span>Live prayer requests shared by believers worldwide</span>
-                            <span className="text-[#D4AF37] font-semibold">One-Click Intercession</span>
+                    {/* TAB 1: MY PETITIONS (Screen 4) */}
+                    <TabsContent value="my_petitions" className="mt-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+                            {/* Main Petitions Column */}
+                            <div className="lg:col-span-2 space-y-6">
+                                {/* Inline Quick Composer */}
+                                <div className="p-5 rounded-2xl bg-[#141416] border border-gray-800 shadow-xl space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-xs font-semibold uppercase tracking-wider text-[#D4AF37] flex items-center gap-1.5">
+                                            <Flame className="w-3.5 h-3.5" /> What are you bringing before God today?
+                                        </h3>
+                                        <span className="text-[10px] text-muted-foreground">Lay your burden on the altar</span>
+                                    </div>
+                                    <Input
+                                        placeholder="E.g., Complete peace in my home, healing, guidance for next season..."
+                                        value={quickTitle}
+                                        onChange={(e) => setQuickTitle(e.target.value)}
+                                        className="bg-black/50 border-gray-800 text-sm focus-visible:ring-[#D4AF37]"
+                                    />
+                                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
+                                        <Input
+                                            placeholder="Supporting Scripture (e.g. Philippians 4:6)"
+                                            value={quickScripture}
+                                            onChange={(e) => setQuickScripture(e.target.value)}
+                                            className="bg-black/50 border-gray-800 text-xs sm:w-64"
+                                        />
+                                        <div className="flex items-center justify-between w-full sm:w-auto gap-4">
+                                            <div className="flex items-center gap-2">
+                                                <Checkbox
+                                                    id="quick-comm"
+                                                    checked={quickIsCommunity}
+                                                    onCheckedChange={(c) => setQuickIsCommunity(Boolean(c))}
+                                                />
+                                                <label htmlFor="quick-comm" className="text-xs text-gray-400 cursor-pointer">
+                                                    Share with community
+                                                </label>
+                                            </div>
+                                            <Button
+                                                size="sm"
+                                                onClick={handleQuickAddPetition}
+                                                disabled={isQuickSubmitting || !quickTitle.trim()}
+                                                className="bg-[#D4AF37] text-black hover:bg-[#b5952f] text-xs font-semibold px-4"
+                                            >
+                                                {isQuickSubmitting ? "Adding..." : "+ Add petition"}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Active Petitions List */}
+                                {activePrayers.length === 0 ? (
+                                    <div className="text-center py-16 p-8 border border-gray-800/80 rounded-2xl bg-[#121214] space-y-3">
+                                        <Flame className="w-10 h-10 text-gray-500 mx-auto" />
+                                        <h3 className="font-serif text-lg font-semibold text-white">Your Altar is Quiet</h3>
+                                        <p className="text-xs text-gray-400 max-w-md mx-auto">
+                                            No active petitions are currently placed. Write what you are believing God for above.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {activePrayers.map((prayer) => (
+                                            <div
+                                                key={prayer.id}
+                                                className="p-5 rounded-2xl border border-gray-800/80 bg-[#141416] hover:border-gray-700 transition-all space-y-4 shadow-lg shadow-black/20"
+                                            >
+                                                <div className="space-y-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <Badge variant="outline" className="border-amber-500/30 text-[#D4AF37] bg-[#D4AF37]/10 text-[10px] font-semibold uppercase">
+                                                            Praying · {prayer.prayed_count || 1} {prayer.prayed_count === 1 ? 'prayer' : 'prayers'}
+                                                        </Badge>
+                                                        <span className="text-[11px] text-muted-foreground">
+                                                            {new Date(prayer.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                                        </span>
+                                                    </div>
+
+                                                    <h4 className="text-base font-semibold text-white">{prayer.title}</h4>
+
+                                                    {prayer.description && (
+                                                        <p className="text-xs text-gray-300 leading-relaxed">
+                                                            {prayer.description}
+                                                        </p>
+                                                    )}
+
+                                                    {prayer.scripture_ref && (
+                                                        <div className="p-3 rounded-xl bg-black/40 border border-border/40 text-xs font-serif italic text-[#D4AF37] flex items-center justify-between">
+                                                            <span>“{prayer.scripture_ref}”</span>
+                                                            <span className="text-[10px] font-sans not-italic text-muted-foreground uppercase">Anchor Verse</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <div className="pt-3 border-t border-gray-800/60 flex flex-wrap items-center justify-between gap-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <Button
+                                                            size="sm"
+                                                            onClick={() => handleIntercede(prayer.id)}
+                                                            className="bg-[#D4AF37]/15 hover:bg-[#D4AF37]/25 text-[#D4AF37] border border-[#D4AF37]/30 text-xs h-8 px-3"
+                                                        >
+                                                            <Check className="w-3.5 h-3.5 mr-1 text-[#D4AF37]" />
+                                                            I prayed today
+                                                        </Button>
+
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            onClick={() => handleMarkAnswered(prayer.id)}
+                                                            className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 text-xs h-8 px-3"
+                                                        >
+                                                            <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                                                            Mark answered
+                                                        </Button>
+                                                    </div>
+
+                                                    <button
+                                                        onClick={() => handleDeletePrayer(prayer.id)}
+                                                        className="text-gray-500 hover:text-rose-400 text-xs p-1.5 transition-colors"
+                                                        title="Remove petition"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Right Rail: Rhythm, Scripture Promises, Faithfulness */}
+                            <div className="space-y-6">
+                                {/* Prayer Rhythm Tracker (PDF Screen 4) */}
+                                <div className="p-5 rounded-2xl bg-[#141416] border border-gray-800 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <h4 className="text-xs font-serif font-bold uppercase tracking-wider text-[#D4AF37]">
+                                            Your Prayer Rhythm
+                                        </h4>
+                                        <span className="text-xs font-bold text-white">{streakDays} days in a row</span>
+                                    </div>
+                                    <div className="flex items-center justify-between pt-1">
+                                        {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => {
+                                            const today = new Date().getDay();
+                                            const isDone = i <= today && streakDays > 0;
+                                            return (
+                                                <div key={i} className="flex flex-col items-center gap-1">
+                                                    <div className={cn(
+                                                        "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-all",
+                                                        isDone
+                                                            ? "bg-[#D4AF37] text-black shadow-md shadow-[#D4AF37]/20"
+                                                            : i === today
+                                                                ? "border border-[#D4AF37] text-[#D4AF37] bg-[#D4AF37]/10"
+                                                                : "border border-gray-800 bg-[#18181c] text-gray-500"
+                                                    )}>
+                                                        {isDone ? "✓" : d}
+                                                    </div>
+                                                    <span className="text-[9px] text-gray-500">{d}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* Verses to Pray */}
+                                <div className="p-5 rounded-2xl bg-[#141416] border border-gray-800 space-y-3">
+                                    <h4 className="text-xs font-serif font-bold uppercase tracking-wider text-[#D4AF37]">
+                                        Verses to Pray
+                                    </h4>
+                                    <div className="space-y-2">
+                                        {[
+                                            { ref: "Philippians 4:6-7", text: "Do not be anxious about anything, but in everything by prayer and supplication..." },
+                                            { ref: "Psalm 103:2-3", text: "Bless the Lord, O my soul, who forgives all your iniquity, who heals all your diseases." },
+                                            { ref: "Jeremiah 17:14", text: "Heal me, O Lord, and I shall be healed; save me, and I shall be saved." },
+                                            { ref: "James 5:16", text: "The effective, fervent prayer of a righteous man avails much." }
+                                        ].map((v, idx) => (
+                                            <div
+                                                key={idx}
+                                                onClick={() => {
+                                                    setQuickScripture(v.ref);
+                                                    toast.info(`Set "${v.ref}" as supporting scripture`);
+                                                }}
+                                                className="p-3 rounded-xl bg-black/40 border border-gray-800/80 hover:border-[#D4AF37]/40 cursor-pointer transition-all group"
+                                            >
+                                                <span className="font-serif text-xs font-semibold text-[#D4AF37] block group-hover:underline">
+                                                    {v.ref}
+                                                </span>
+                                                <p className="text-[11px] text-gray-400 mt-0.5 line-clamp-2 italic">
+                                                    "{v.text}"
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* God's Faithfulness Record */}
+                                <div className="p-5 rounded-2xl bg-[#121812] border border-emerald-500/30 space-y-2">
+                                    <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs">
+                                        <CheckCircle2 className="w-4 h-4" />
+                                        <span>God's Faithfulness Record</span>
+                                    </div>
+                                    <p className="text-xs text-gray-300">
+                                        You have <strong className="text-emerald-400 font-serif">{answeredPrayers.length} answered {answeredPrayers.length === 1 ? 'prayer' : 'prayers'}</strong> recorded.
+                                    </p>
+                                    <p className="text-[11px] text-muted-foreground pt-1">
+                                        Every answered petition is preserved to anchor your faith in future seasons.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </TabsContent>
+
+                    {/* TAB 2: COMMUNITY PRAYER WALL (Screen 5) */}
+                    <TabsContent value="community" className="mt-6 space-y-6">
+                        {/* Emergency / Crisis Safety Banner (PDF Spec) */}
+                        <div className="p-4 rounded-2xl bg-rose-950/20 border border-rose-500/40 flex items-start gap-3 text-rose-200 text-xs">
+                            <Shield className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                            <div className="space-y-1">
+                                <span className="font-bold uppercase tracking-wider text-rose-400 block">
+                                    If you are in danger or crisis
+                                </span>
+                                <p className="text-rose-200/90 leading-relaxed text-[11px]">
+                                    If you are experiencing overwhelming distress, thoughts of self-harm, or an acute crisis, please reach out for immediate professional care. In Nigeria, dial <strong>112</strong> (National Emergency) or contact the Lagos State Lifeline at <strong>0800 000 0000</strong>. You are deeply loved by God and not alone.
+                                </p>
+                            </div>
                         </div>
 
+                        {/* Filter Pills */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+                            <div className="flex items-center gap-2">
+                                {[
+                                    { id: 'all', label: 'All Requests' },
+                                    { id: 'needs_prayer', label: 'Needs Prayer' },
+                                    { id: 'praise', label: 'Praise Reports' },
+                                ].map((tab) => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setCommunityFilter(tab.id as any)}
+                                        className={cn(
+                                            "px-3 py-1.5 rounded-full text-xs font-medium transition-all",
+                                            communityFilter === tab.id
+                                                ? "bg-[#D4AF37] text-black font-semibold shadow-sm"
+                                                : "bg-[#16161a] border border-gray-800 text-muted-foreground hover:text-white"
+                                        )}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                                {communityPrayers.length} believers standing together
+                            </span>
+                        </div>
+
+                        {/* Community Feed */}
                         {communityPrayers.length === 0 ? (
-                            <div className="text-center py-16 p-8 border border-gray-800/80 rounded-2xl bg-[#121212] space-y-3">
+                            <div className="text-center py-16 p-8 border border-gray-800/80 rounded-2xl bg-[#121214] space-y-3">
                                 <HeartHandshake className="w-10 h-10 text-[#D4AF37] mx-auto opacity-70" />
                                 <h3 className="font-serif text-lg font-semibold text-white">The Community Altar is Open</h3>
                                 <p className="text-xs text-gray-400 max-w-md mx-auto">
@@ -351,7 +611,7 @@ export default function AltarPage() {
                                     return (
                                         <div
                                             key={prayer.id}
-                                            className="p-5 rounded-xl border border-gray-800/80 bg-[#141414] hover:border-gray-700 transition-all flex flex-col justify-between space-y-4"
+                                            className="p-5 rounded-2xl border border-gray-800/80 bg-[#141416] hover:border-gray-700 transition-all flex flex-col justify-between space-y-4 shadow-lg shadow-black/20"
                                         >
                                             <div className="space-y-2">
                                                 <div className="flex items-center justify-between">
@@ -363,16 +623,16 @@ export default function AltarPage() {
                                                     </span>
                                                 </div>
 
-                                                <h4 className="text-base font-medium text-white">{prayer.title}</h4>
+                                                <h4 className="text-base font-semibold text-white">{prayer.title}</h4>
 
                                                 {prayer.description && (
-                                                    <p className="text-xs text-gray-400 leading-relaxed line-clamp-3">
+                                                    <p className="text-xs text-gray-300 leading-relaxed line-clamp-3">
                                                         {prayer.description}
                                                     </p>
                                                 )}
 
                                                 {prayer.scripture_ref && (
-                                                    <div className="text-[11px] text-gray-400 font-serif italic border-l-2 border-[#D4AF37]/50 pl-2 mt-2">
+                                                    <div className="text-[11px] text-[#D4AF37] font-serif italic border-l-2 border-[#D4AF37]/50 pl-2 mt-2">
                                                         "{prayer.scripture_ref}"
                                                     </div>
                                                 )}
@@ -388,8 +648,8 @@ export default function AltarPage() {
                                                     size="sm"
                                                     onClick={() => handleIntercede(prayer.id)}
                                                     className={hasPrayed
-                                                        ? "bg-green-600/20 text-green-400 border border-green-500/30 hover:bg-green-600/30 text-xs"
-                                                        : "bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/40 hover:bg-[#D4AF37] hover:text-black text-xs font-semibold"}
+                                                        ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30 text-xs"
+                                                        : "bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30 hover:bg-[#D4AF37] hover:text-black text-xs font-semibold"}
                                                 >
                                                     {hasPrayed ? (
                                                         <>
@@ -397,7 +657,7 @@ export default function AltarPage() {
                                                         </>
                                                     ) : (
                                                         <>
-                                                            <HeartHandshake className="w-3.5 h-3.5 mr-1" /> Stand in Gap
+                                                            <HeartHandshake className="w-3.5 h-3.5 mr-1" /> I prayed for this
                                                         </>
                                                     )}
                                                 </Button>
@@ -407,76 +667,52 @@ export default function AltarPage() {
                                 })}
                             </div>
                         )}
+
+                        {/* Community Guidelines */}
+                        <div className="p-4 rounded-xl bg-black/40 border border-gray-800/60 text-center text-xs text-muted-foreground">
+                            <strong>Community Guidelines:</strong> We pray in faith, love, and truth. All petitions are moderated to uphold biblical encouragement and mutual edification.
+                        </div>
                     </TabsContent>
 
-                    {/* PRIVATE ALAR */}
-                    <TabsContent value="private" className="mt-6 space-y-4">
-                        {myPrayers.length === 0 ? (
-                            <div className="text-center py-16 p-8 border border-gray-800/80 rounded-2xl bg-[#121212] space-y-3">
-                                <Shield className="w-10 h-10 text-gray-500 mx-auto" />
-                                <h3 className="font-serif text-lg font-semibold text-white">Your Secret Place</h3>
+                    {/* TAB 3: ANSWERED TESTIMONIES */}
+                    <TabsContent value="answered" className="mt-6 space-y-4">
+                        {answeredPrayers.length === 0 ? (
+                            <div className="text-center py-16 p-8 border border-gray-800/80 rounded-2xl bg-[#121214] space-y-3">
+                                <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto opacity-70" />
+                                <h3 className="font-serif text-lg font-semibold text-white">Your Faithfulness Record</h3>
                                 <p className="text-xs text-gray-400 max-w-md mx-auto">
-                                    You have no private petitions placed on your altar yet. Lay your first request before the Lord above.
+                                    When prayers are answered, mark them in your active petitions to build a lifelong monument of God's provision.
                                 </p>
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {myPrayers.map((prayer) => (
+                                {answeredPrayers.map((prayer) => (
                                     <div
                                         key={prayer.id}
-                                        className={`p-5 rounded-xl border transition-all flex flex-col justify-between space-y-4 ${prayer.status === 'answered' ? 'bg-[#121812] border-green-500/30' : 'bg-[#141414] border-gray-800/80'}`}
+                                        className="p-5 rounded-2xl border border-emerald-500/30 bg-[#121812] space-y-3 shadow-lg shadow-black/20"
                                     >
-                                        <div className="space-y-2">
-                                            <div className="flex items-center justify-between">
-                                                <Badge variant="outline" className={prayer.status === 'answered' ? 'border-green-500/40 text-green-400 text-[10px]' : 'border-gray-700 text-gray-400 text-[10px]'}>
-                                                    {prayer.status === 'answered' ? 'Answered' : 'Active Petition'}
-                                                </Badge>
-                                                {prayer.is_community && (
-                                                    <span className="text-[10px] text-[#D4AF37] bg-[#D4AF37]/10 px-2 py-0.5 rounded-full border border-[#D4AF37]/20">
-                                                        Public
-                                                    </span>
-                                                )}
+                                        <div className="flex items-center justify-between text-xs">
+                                            <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 text-[10px] uppercase">
+                                                Answered Prayer
+                                            </Badge>
+                                            <span className="text-muted-foreground text-[11px]">
+                                                {new Date(prayer.answered_at || prayer.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                            </span>
+                                        </div>
+
+                                        <h4 className="text-base font-semibold text-white">{prayer.title}</h4>
+
+                                        {prayer.description && (
+                                            <p className="text-xs text-gray-300 leading-relaxed">
+                                                {prayer.description}
+                                            </p>
+                                        )}
+
+                                        {prayer.scripture_ref && (
+                                            <div className="p-2.5 rounded-lg bg-black/40 border border-emerald-500/20 text-xs font-serif italic text-[#D4AF37]">
+                                                "{prayer.scripture_ref}"
                                             </div>
-
-                                            <h4 className="text-base font-medium text-white">{prayer.title}</h4>
-
-                                            {prayer.description && (
-                                                <p className="text-xs text-gray-400 leading-relaxed">
-                                                    {prayer.description}
-                                                </p>
-                                            )}
-
-                                            {prayer.scripture_ref && (
-                                                <div className="text-[11px] text-gray-400 font-serif italic border-l-2 border-[#D4AF37]/50 pl-2">
-                                                    "{prayer.scripture_ref}"
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="pt-3 border-t border-gray-800/60 flex items-center justify-between">
-                                            <button
-                                                onClick={() => handleDeletePrayer(prayer.id)}
-                                                className="text-gray-500 hover:text-rose-400 text-xs transition-colors"
-                                                title="Remove request"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-
-                                            {prayer.status !== 'answered' ? (
-                                                <Button
-                                                    size="sm"
-                                                    variant="outline"
-                                                    onClick={() => handleMarkAnswered(prayer.id)}
-                                                    className="border-green-500/40 text-green-400 hover:bg-green-500/20 text-xs"
-                                                >
-                                                    <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Mark Answered
-                                                </Button>
-                                            ) : (
-                                                <span className="text-xs text-green-400 flex items-center gap-1">
-                                                    <CheckCircle2 className="w-3.5 h-3.5" /> Answered Prayer
-                                                </span>
-                                            )}
-                                        </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>

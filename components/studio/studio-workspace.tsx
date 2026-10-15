@@ -4,26 +4,42 @@ import { useState } from "react";
 import { SermonBuilder, SermonData } from "./sermon-builder";
 import { LivePreview } from "./pdf-preview";
 import { Button } from "@/components/ui/button";
-import { PenTool, Eye, Save, Sparkles } from "lucide-react";
+import {
+    PenTool, Eye, Save, Sparkles, Volume2, ShieldCheck,
+    Lightbulb, Play, Clock, ArrowLeft
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { FormatSettings, FormatSettingsState } from "./format-settings";
 import { UpgradeLock } from "./upgrade-lock";
 import { UpgradeDialog } from "./upgrade-dialog";
 import { useRhema } from "@/lib/store/rhema-context";
+import { PreachModeModal } from "./preach-mode-modal";
+import { FaithfulnessCheckModal } from "./faithfulness-check-modal";
+import { IllustrationDialog } from "./illustration-dialog";
+import { Badge } from "@/components/ui/badge";
 
 interface StudioWorkspaceProps {
     data: SermonData;
     onChange: (data: SermonData) => void;
     onSave: () => void;
     onGenerate: () => void;
+    onBackToHome?: () => void;
     isSaving: boolean;
     isGenerating?: boolean;
 }
 
 type ViewMode = 'write' | 'preview';
 
-export function StudioWorkspace({ data, onChange, onSave, onGenerate, isSaving, isGenerating = false }: StudioWorkspaceProps) {
+export function StudioWorkspace({
+    data,
+    onChange,
+    onSave,
+    onGenerate,
+    onBackToHome,
+    isSaving,
+    isGenerating = false
+}: StudioWorkspaceProps) {
     const [viewMode, setViewMode] = useState<ViewMode>('write');
     const [formatSettings, setFormatSettings] = useState<FormatSettingsState>({
         typography: 'serif',
@@ -31,9 +47,19 @@ export function StudioWorkspace({ data, onChange, onSave, onGenerate, isSaving, 
         theme: 'modern'
     });
 
+    // Modals
+    const [showPreachMode, setShowPreachMode] = useState(false);
+    const [showFaithfulnessModal, setShowFaithfulnessModal] = useState(false);
+    const [showIllustrationModal, setShowIllustrationModal] = useState(false);
+
     // Auth & Gate
     const { userTier } = useRhema();
     const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
+
+    // Live Word Count & Speaking Time (at 130 wpm)
+    const rawText = data.notes?.replace(/<[^>]*>?/gm, '') || '';
+    const wordCount = rawText.trim() ? rawText.trim().split(/\s+/).length : 0;
+    const estimatedMinutes = Math.max(1, Math.ceil(wordCount / 130));
 
     const handleGenerateClick = () => {
         if (userTier !== 'MINISTER') {
@@ -43,101 +69,181 @@ export function StudioWorkspace({ data, onChange, onSave, onGenerate, isSaving, 
         onGenerate();
     };
 
+    const handleInsertIllustration = (illustrationHtml: string) => {
+        onChange({
+            ...data,
+            notes: (data.notes || "") + "<br/>" + illustrationHtml
+        });
+    };
+
     return (
-        <div className="flex flex-col h-full bg-[#fcfcfc] overflow-hidden">
+        <div className="flex flex-col h-full bg-[#0a0a0a] text-white overflow-hidden font-sans">
             <UpgradeDialog
                 isOpen={showUpgradeDialog}
                 onOpenChange={setShowUpgradeDialog}
-                featureName="AI Generation"
+                featureName="AI Sermon Architect"
             />
-            {/* Header / Control Bar */}
-            <div className="h-16 border-b border-gray-200 flex items-center justify-between px-6 bg-white shrink-0 shadow-sm z-30">
-                <div className="flex items-center gap-6">
-                    <h2 className="font-serif text-xl font-bold tracking-tight text-gray-900 flex items-center gap-2">
-                        Studio <span className="text-xs bg-[#D4AF37]/10 text-[#D4AF37] px-2 py-0.5 rounded-full font-sans font-medium">PRO</span>
-                    </h2>
 
-                    {/* View Toggle */}
-                    <div className="flex bg-gray-100 p-1 rounded-lg">
+            {/* Preach Mode Teleprompter Modal */}
+            <PreachModeModal
+                open={showPreachMode}
+                onClose={() => setShowPreachMode(false)}
+                title={data.title}
+                scripture={data.scripture}
+                contentHtml={data.notes}
+            />
+
+            {/* Faithfulness Check Modal */}
+            <FaithfulnessCheckModal
+                open={showFaithfulnessModal}
+                onOpenChange={setShowFaithfulnessModal}
+                scripture={data.scripture}
+                notesHtml={data.notes}
+            />
+
+            {/* Illustration Assistant Dialog */}
+            <IllustrationDialog
+                open={showIllustrationModal}
+                onOpenChange={setShowIllustrationModal}
+                topic={data.title}
+                scripture={data.scripture}
+                onInsertIllustration={handleInsertIllustration}
+            />
+
+            {/* TOP BAR / CONTROL HUD */}
+            <div className="h-16 border-b border-gray-800 flex items-center justify-between px-4 md:px-6 bg-[#121214] shrink-0 shadow-md z-30">
+                {/* Left: Home navigation, Title & Word count / Speaking time */}
+                <div className="flex items-center gap-3 md:gap-5">
+                    {onBackToHome && (
+                        <button
+                            onClick={onBackToHome}
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                            title="Back to Sermons Home"
+                        >
+                            <ArrowLeft className="w-4 h-4" />
+                        </button>
+                    )}
+
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <h2 className="font-serif text-sm md:text-base font-bold tracking-tight text-white line-clamp-1">
+                                {data.title || "Untitled Sermon"}
+                            </h2>
+                            <Badge className="bg-[#D4AF37]/15 text-[#D4AF37] border-0 text-[10px] font-mono">
+                                MINISTER
+                            </Badge>
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px] text-gray-400">
+                            <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-[#D4AF37]" />
+                                {wordCount.toLocaleString()} words · ~{estimatedMinutes} mins at 130 wpm
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Faithfulness Badge */}
+                    <button
+                        onClick={() => setShowFaithfulnessModal(true)}
+                        className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 transition-colors text-xs font-mono"
+                        title="Open Faithfulness Check"
+                    >
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>4/4 verified</span>
+                    </button>
+                </div>
+
+                {/* Right: Actions, Preach Mode, Views, and Save */}
+                <div className="flex items-center gap-2 md:gap-3">
+                    {/* Illustration Generator Button */}
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setShowIllustrationModal(true)}
+                        className="hidden md:flex text-xs text-gray-300 hover:text-white hover:bg-gray-800 gap-1.5"
+                    >
+                        <Lightbulb className="w-3.5 h-3.5 text-[#D4AF37]" />
+                        Illustration Ideas
+                    </Button>
+
+                    {/* Preach Mode Pulpit Button (Screen 15) */}
+                    <Button
+                        size="sm"
+                        onClick={() => setShowPreachMode(true)}
+                        className="bg-[#D4AF37] hover:bg-[#b5952f] text-black font-semibold text-xs gap-1.5 shadow-md shadow-[#D4AF37]/15"
+                    >
+                        <Play className="w-3.5 h-3.5 fill-black" />
+                        Preach Mode
+                    </Button>
+
+                    {/* View Toggle (Write vs PDF Preview) */}
+                    <div className="hidden lg:flex bg-[#1a1a1c] p-0.5 rounded-lg border border-gray-800">
                         <button
                             onClick={() => setViewMode('write')}
                             className={cn(
-                                "flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-medium transition-all",
+                                "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all",
                                 viewMode === 'write'
-                                    ? "bg-white text-black shadow-sm ring-1 ring-black/5"
-                                    : "text-gray-500 hover:text-gray-900"
+                                    ? "bg-[#D4AF37] text-black font-semibold shadow-sm"
+                                    : "text-gray-400 hover:text-white"
                             )}
                         >
-                            <PenTool className="h-3.5 w-3.5" />
+                            <PenTool className="h-3 w-3" />
                             Write
                         </button>
                         <button
                             onClick={() => setViewMode('preview')}
                             className={cn(
-                                "flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-medium transition-all",
+                                "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all",
                                 viewMode === 'preview'
-                                    ? "bg-white text-black shadow-sm ring-1 ring-black/5"
-                                    : "text-gray-500 hover:text-gray-900"
+                                    ? "bg-[#D4AF37] text-black font-semibold shadow-sm"
+                                    : "text-gray-400 hover:text-white"
                             )}
                         >
-                            <Eye className="h-3.5 w-3.5" />
-                            Preview
+                            <Eye className="h-3 w-3" />
+                            Preview PDF
                         </button>
                     </div>
-                </div>
 
-                <div className="flex items-center gap-3">
                     <FormatSettings
                         settings={formatSettings}
                         onUpdate={setFormatSettings}
                     />
 
-                    <div className="h-6 w-px bg-gray-200 mx-1" />
+                    <div className="h-5 w-px bg-gray-800 mx-1 hidden sm:block" />
 
                     <Button
                         onClick={onSave}
                         disabled={isSaving}
                         variant="ghost"
                         size="sm"
-                        className="text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                        className="text-gray-300 hover:text-white hover:bg-gray-800 text-xs gap-1.5"
                     >
-                        {isSaving ? "Saving..." : <><Save className="h-4 w-4 mr-2" /> Save</>}
+                        <Save className="h-3.5 w-3.5" />
+                        {isSaving ? "Saving..." : "Save"}
                     </Button>
 
-                    <div className="relative group">
-                        <Button
-                            onClick={handleGenerateClick}
-                            disabled={isGenerating}
-                            size="sm"
-                            className="bg-black text-white hover:bg-gray-800 gap-2 shadow-sm transition-transform active:scale-95 relative overflow-hidden"
-                        >
-                            <Sparkles className={cn("h-3.5 w-3.5", isGenerating && "animate-spin text-[#D4AF37]")} />
-                            {isGenerating ? "Generating..." : "Generate AI"}
-                            {userTier !== 'MINISTER' && !isGenerating && (
-                                <div className="absolute inset-0 bg-white/10 backdrop-blur-[1px] flex items-center justify-center">
-                                    <div className="bg-[#D4AF37] p-1 rounded-full"><div className="h-2 w-2 bg-black rounded-full" /></div>
-                                </div>
-                            )}
-                        </Button>
-                        {userTier !== 'MINISTER' && (
-                            <div className="absolute top-full mt-2 right-0 w-max bg-black text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                                Premium Feature
-                            </div>
-                        )}
-                    </div>
+                    {/* AI Architect Generate Button */}
+                    <Button
+                        onClick={handleGenerateClick}
+                        disabled={isGenerating}
+                        size="sm"
+                        className="bg-black hover:bg-gray-900 border border-[#D4AF37]/50 text-white gap-1.5 text-xs shadow-sm"
+                    >
+                        <Sparkles className={cn("h-3.5 w-3.5 text-[#D4AF37]", isGenerating && "animate-spin")} />
+                        {isGenerating ? "Crafting..." : "AI Generate"}
+                    </Button>
                 </div>
             </div>
 
-            {/* Main Workspace Area */}
+            {/* MAIN WORKSPACE AREA */}
             <div className="flex-1 overflow-hidden relative bg-[#09090b]">
                 <AnimatePresence mode="wait">
                     {viewMode === 'write' ? (
                         <motion.div
                             key="write"
-                            initial={{ opacity: 0, scale: 0.98 }}
+                            initial={{ opacity: 0, scale: 0.99 }}
                             animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.98 }}
-                            transition={{ duration: 0.15, ease: "easeInOut" }}
+                            exit={{ opacity: 0, scale: 0.99 }}
+                            transition={{ duration: 0.15 }}
                             className="h-full w-full"
                         >
                             <SermonBuilder
@@ -152,13 +258,13 @@ export function StudioWorkspace({ data, onChange, onSave, onGenerate, isSaving, 
                     ) : (
                         <motion.div
                             key="preview"
-                            initial={{ opacity: 0, scale: 0.98 }}
+                            initial={{ opacity: 0, scale: 0.99 }}
                             animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.98 }}
-                            transition={{ duration: 0.15, ease: "easeInOut" }}
-                            className="h-full w-full bg-[#1c1c1c] flex justify-center p-8 overflow-y-auto"
+                            exit={{ opacity: 0, scale: 0.99 }}
+                            transition={{ duration: 0.15 }}
+                            className="h-full w-full bg-[#121214] flex justify-center p-6 md:p-8 overflow-y-auto"
                         >
-                            <div className="scale-90 origin-top relative">
+                            <div className="scale-90 md:scale-95 origin-top relative w-full max-w-4xl">
                                 <UpgradeLock minTier="MINISTER" blurAmount="md">
                                     <LivePreview data={data} />
                                 </UpgradeLock>

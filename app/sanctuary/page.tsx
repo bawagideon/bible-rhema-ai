@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { useAudio } from "@/lib/store/audio-context";
 import { SOUNDSCAPES } from "@/lib/audio-assets";
 import { BreathingOrb } from "@/components/sanctuary/breathing-orb";
+import { LeviteMixer } from "@/components/sanctuary/levite-mixer";
 
 const SANCTUARY_SCRIPTURES = [
     {
@@ -200,7 +201,7 @@ export default function SanctuaryPage() {
             {/* MAIN SANCTUARY STAGE */}
             <main className="relative z-20 flex-1 flex flex-col items-center justify-center p-6 text-center max-w-4xl mx-auto w-full">
                 <AnimatePresence mode="wait">
-                    {/* ROOM 1: THE STILLNESS ROOM */}
+                    {/* ROOM 1: THE STILLNESS ROOM (Screen 3) */}
                     {activeRoom === "stillness" && (
                         <motion.div
                             key="stillness-room"
@@ -208,26 +209,35 @@ export default function SanctuaryPage() {
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.96 }}
                             transition={{ duration: 0.5 }}
-                            className="flex flex-col items-center justify-center space-y-8"
+                            className="flex flex-col items-center justify-center space-y-6 max-w-xl"
                         >
-                            {/* Breath Orb */}
-                            {showGuidance ? (
-                                <div className="scale-110 md:scale-125 transform py-6">
+                            {/* Breath Orb with Concentric Rings */}
+                            {showGuidance && (
+                                <div className="scale-110 md:scale-120 transform py-4">
                                     <BreathingOrb mode="default" autoStart={true} />
-                                </div>
-                            ) : (
-                                <div className="p-12 rounded-full border border-white/10 bg-white/5 text-muted-foreground text-sm font-serif italic max-w-md">
-                                    "Be still before the Lord and wait patiently for Him." — Psalm 37:7
                                 </div>
                             )}
 
+                            {/* Centered Golden Scripture (PDF Screen 3) */}
+                            <div className="space-y-3 pt-2">
+                                <div className="inline-block text-[11px] font-mono tracking-widest uppercase text-[#D4AF37] bg-[#D4AF37]/10 px-3 py-1 rounded-full border border-[#D4AF37]/30">
+                                    PSALM 46:10 · KJV
+                                </div>
+                                <blockquote className="font-serif text-2xl md:text-3xl text-white font-normal italic leading-relaxed">
+                                    “Be still, and know that I am God: I will be exalted among the heathen, I will be exalted in the earth.”
+                                </blockquote>
+                                <p className="text-xs text-muted-foreground">
+                                    4-7-8 rhythm: Inhale peace, hold in His presence, release every burden.
+                                </p>
+                            </div>
+
                             {/* Stillness Controls */}
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-3 pt-2">
                                 <Button
                                     variant="outline"
                                     size="sm"
                                     onClick={() => setShowGuidance(!showGuidance)}
-                                    className="border-white/10 bg-black/40 hover:bg-white/10 text-xs gap-2 text-muted-foreground hover:text-white"
+                                    className="border-white/10 bg-black/40 hover:bg-white/10 text-xs gap-2 text-muted-foreground hover:text-white rounded-full"
                                 >
                                     {showGuidance ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                                     <span>{showGuidance ? "Hide Breath Guide" : "Show Breath Guide"}</span>
@@ -236,7 +246,7 @@ export default function SanctuaryPage() {
                         </motion.div>
                     )}
 
-                    {/* ROOM 2: SCRIPTURE SOAK ROOM */}
+                    {/* ROOM 2: SCRIPTURE SOAK & 3-FADER MIXER (Screen 7) */}
                     {activeRoom === "soak" && (
                         <motion.div
                             key="soak-room"
@@ -244,48 +254,26 @@ export default function SanctuaryPage() {
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -15 }}
                             transition={{ duration: 0.5 }}
-                            className="flex flex-col items-center justify-center space-y-8 max-w-2xl px-4"
+                            className="flex flex-col items-center justify-center space-y-6 w-full max-w-4xl px-2 py-4"
                         >
-                            <Badge className="bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/30 px-3 py-1 text-xs">
-                                {currentScripture.theme}
-                            </Badge>
-
-                            <blockquote className="font-serif text-2xl md:text-4xl text-foreground font-normal leading-relaxed md:leading-relaxed tracking-wide drop-shadow-md">
-                                “{currentScripture.text}”
-                            </blockquote>
-
-                            <div className="flex items-center gap-3">
-                                <span className="font-serif text-sm md:text-base text-[#D4AF37] font-semibold tracking-wider">
+                            <div className="space-y-2 text-center max-w-xl mx-auto">
+                                <Badge className="bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/30 px-3 py-1 text-xs">
+                                    {currentScripture.theme}
+                                </Badge>
+                                <blockquote className="font-serif text-xl md:text-2xl text-foreground font-normal leading-relaxed italic drop-shadow-md">
+                                    “{currentScripture.text}”
+                                </blockquote>
+                                <span className="font-serif text-xs md:text-sm text-[#D4AF37] font-semibold tracking-wider block">
                                     {currentScripture.ref} ({currentScripture.translation})
                                 </span>
                             </div>
 
-                            {/* Passage Navigator */}
-                            <div className="flex items-center gap-4 pt-4">
-                                <Button
-                                    variant="outline"
-                                    size="icon"
-                                    onClick={handlePrevScripture}
-                                    className="h-9 w-9 rounded-full border-white/10 bg-black/40 hover:bg-white/10"
-                                >
-                                    <ChevronLeft className="h-4 w-4" />
-                                </Button>
-                                <span className="text-xs text-muted-foreground font-mono">
-                                    {scriptureIndex + 1} of {SANCTUARY_SCRIPTURES.length}
-                                </span>
-                                <Button
-                                    variant="outline"
-                                    size="icon"
-                                    onClick={handleNextScripture}
-                                    className="h-9 w-9 rounded-full border-white/10 bg-black/40 hover:bg-white/10"
-                                >
-                                    <ChevronRight className="h-4 w-4" />
-                                </Button>
-                            </div>
+                            {/* THE 3-FADER LEVITE ENGINE MIXER */}
+                            <LeviteMixer />
                         </motion.div>
                     )}
 
-                    {/* ROOM 3: AMBIENT WORSHIP & REST ROOM */}
+                    {/* ROOM 3: AMBIENT WORSHIP & REST ROOM (Screen 8) */}
                     {activeRoom === "ambient" && (
                         <motion.div
                             key="ambient-room"
@@ -293,12 +281,12 @@ export default function SanctuaryPage() {
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.96 }}
                             transition={{ duration: 0.5 }}
-                            className="flex flex-col items-center justify-center space-y-6 max-w-md w-full"
+                            className="flex flex-col items-center justify-center space-y-6 max-w-lg w-full"
                         >
                             <div className="text-center space-y-2">
-                                <h3 className="font-serif text-2xl text-foreground font-medium">Levite Sound Engine</h3>
+                                <h3 className="font-serif text-2xl text-foreground font-medium">Levite Worship Stream</h3>
                                 <p className="text-xs text-muted-foreground">
-                                    Zero-latency procedural soundscapes synthesized with restorative prayer frequencies.
+                                    Procedural prayer frequencies & instrumental soundscapes for prolonged secret place soaking.
                                 </p>
                             </div>
 

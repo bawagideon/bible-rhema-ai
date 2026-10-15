@@ -12,6 +12,8 @@ import { useRhema } from "@/lib/store/rhema-context";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useSearchParams } from "next/navigation";
+import { ThinkingChecklist, DailyLimitModal, CareMomentModal } from "@/components/system";
+import { cn } from "@/lib/utils";
 
 export interface ChatMessage {
     id: string;
@@ -25,6 +27,8 @@ export default function SpiritOSPage() {
     const [mode, setMode] = useState<"devotion" | "exegesis">("exegesis");
     const [inputValue, setInputValue] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const [showCareModal, setShowCareModal] = useState(false);
+    const [showLimitModal, setShowLimitModal] = useState(false);
 
     // Independent conversation threads by mode
     const [conversations, setConversations] = useState<{
@@ -75,6 +79,12 @@ export default function SpiritOSPage() {
             query: text.trim()
         };
 
+        // Screen 20: Crisis Care Moment Detection
+        const crisisRegex = /(suicide|kill myself|end my life|want to die|take my life|no reason to live)/i;
+        if (crisisRegex.test(text)) {
+            setShowCareModal(true);
+        }
+
         // Append user message to active mode thread
         setConversations(prev => ({
             ...prev,
@@ -99,6 +109,11 @@ export default function SpiritOSPage() {
                     history
                 })
             });
+
+            if (response.status === 429) {
+                setShowLimitModal(true);
+                throw new Error("Daily SpiritOS quota reached (5/5). Quota resets at midnight.");
+            }
 
             if (!response.ok || !response.body) {
                 throw new Error("Unable to reach theological engine");
@@ -184,24 +199,32 @@ export default function SpiritOSPage() {
         ]
     };
 
+    const [scope, setScope] = useState<"scripture" | "references" | "library">("references");
+
     return (
         <ShellLayout>
             <TooltipProvider>
                 <div className="flex flex-col h-full relative font-sans">
-                    {/* Header */}
-                    <header className="flex-none h-16 border-b border-border/40 bg-background/60 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between px-4 md:px-8">
+                    {/* Header with Breadcrumb, Mode, and Scope */}
+                    <header className="flex-none min-h-16 py-3 border-b border-border/40 bg-background/60 backdrop-blur-md sticky top-0 z-10 flex flex-wrap items-center justify-between px-4 md:px-8 gap-3">
                         <div className="flex items-center gap-3">
-                            <h1 className="font-serif text-lg font-medium text-white tracking-wide">SpiritOS</h1>
-                            <Badge variant="outline" className="text-xs text-[#D4AF37] border-[#D4AF37]/30">
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-mono tracking-widest text-muted-foreground uppercase">SPIRITOS · STUDY</span>
+                                <h1 className="font-serif text-base md:text-lg font-semibold text-white tracking-wide">
+                                    {currentMessages.length > 0 ? (currentMessages[currentMessages.length - 1].query || "Exegetical Inquiry") : "Theological Study Workspace"}
+                                </h1>
+                            </div>
+                            <Badge variant="outline" className="text-[10px] text-[#D4AF37] border-[#D4AF37]/30 uppercase">
                                 {userRole}
                             </Badge>
                         </div>
 
-                        {/* Mode Selector with Rich Tooltips */}
-                        <div className="flex items-center gap-2">
+                        {/* Controls: Mode & Scope */}
+                        <div className="flex flex-wrap items-center gap-3">
+                            {/* Mode Selector */}
                             <Tabs
                                 value={mode}
-                                className="w-[280px] md:w-[320px]"
+                                className="w-[240px] md:w-[270px]"
                                 onValueChange={(val) => setMode(val as "devotion" | "exegesis")}
                             >
                                 <TabsList className="grid w-full grid-cols-2 bg-[#161616] border border-gray-800 p-0.5 rounded-xl">
@@ -217,7 +240,7 @@ export default function SpiritOSPage() {
                                         </TooltipTrigger>
                                         <TooltipContent side="bottom" className="max-w-xs bg-[#1a1a1a] border-gray-700 text-xs text-gray-200 p-3 leading-relaxed">
                                             <strong className="text-[#D4AF37] block mb-1">Exegesis Study Mode</strong>
-                                            The careful, analytical study of Scripture exploring literary setting, historical covenant context, original Hebrew & Greek terms, cross-references, and responsible interpretation.
+                                            Original Hebrew & Greek analysis, historical covenant context, and responsible expository interpretation.
                                         </TooltipContent>
                                     </Tooltip>
 
@@ -233,15 +256,35 @@ export default function SpiritOSPage() {
                                         </TooltipTrigger>
                                         <TooltipContent side="bottom" className="max-w-xs bg-[#1a1a1a] border-gray-700 text-xs text-gray-200 p-3 leading-relaxed">
                                             <strong className="text-rose-400 block mb-1">Devotional Heart Walk</strong>
-                                            A reflective, Scripture-centred pastoral walk connecting God's Word directly to personal prayer, spiritual stillness, meditation on Christ's character, and practical life application.
+                                            Reflective pastoral prayer, spiritual stillness, and meditation on God's character.
                                         </TooltipContent>
                                     </Tooltip>
                                 </TabsList>
                             </Tabs>
-                        </div>
 
-                        {/* Thread Controls */}
-                        <div className="flex items-center gap-2">
+                            {/* Scope Selector Pills (Screen 2) */}
+                            <div className="hidden lg:flex items-center bg-[#141416] border border-gray-800 p-0.5 rounded-xl text-[11px]">
+                                {[
+                                    { id: "scripture", label: "Scripture only" },
+                                    { id: "references", label: "Scripture + References" },
+                                    { id: "library", label: "My library" }
+                                ].map((item) => (
+                                    <button
+                                        key={item.id}
+                                        onClick={() => setScope(item.id as any)}
+                                        className={cn(
+                                            "px-2.5 py-1 rounded-lg transition-colors font-medium",
+                                            scope === item.id
+                                                ? "bg-white/10 text-[#D4AF37] font-semibold"
+                                                : "text-muted-foreground hover:text-white"
+                                        )}
+                                    >
+                                        {item.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Thread Controls */}
                             {currentMessages.length > 0 && (
                                 <Button
                                     variant="ghost"
@@ -310,13 +353,8 @@ export default function SpiritOSPage() {
                             ))}
 
                             {isLoading && (
-                                <div className="flex justify-start items-center gap-3 animate-pulse">
-                                    <div className="h-8 w-8 rounded-lg bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
-                                        <Sparkles className="w-4 h-4 text-[#D4AF37] animate-spin" />
-                                    </div>
-                                    <span className="text-xs text-[#D4AF37] font-medium">
-                                        {mode === 'exegesis' ? "Consulting biblical texts & original languages..." : "Seeking Christ's peace & pastoral prayer..."}
-                                    </span>
+                                <div className="pt-2">
+                                    <ThinkingChecklist />
                                 </div>
                             )}
 
@@ -352,6 +390,16 @@ export default function SpiritOSPage() {
                         </div>
                     </div>
                 </div>
+
+                {/* SYSTEM BOARD MODALS (Screen 20) */}
+                <CareMomentModal
+                    open={showCareModal}
+                    onOpenChange={setShowCareModal}
+                />
+                <DailyLimitModal
+                    open={showLimitModal}
+                    onOpenChange={setShowLimitModal}
+                />
             </TooltipProvider>
         </ShellLayout>
     );

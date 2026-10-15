@@ -3,11 +3,13 @@
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Copy, Share, Bookmark, Check, BookOpen, Heart } from "lucide-react";
+import { Sparkles, Copy, Share, Bookmark, Check, BookOpen, Heart, Palette } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
+import { useRhema } from "@/lib/store/rhema-context";
 import { JournalModal } from "@/components/journal/journal-modal";
 
 interface MessageBubbleProps {
@@ -19,6 +21,8 @@ interface MessageBubbleProps {
 
 export function MessageBubble({ role, content, mode = "exegesis", query = "" }: MessageBubbleProps) {
     const isUser = role === "user";
+    const router = useRouter();
+    const { setSermonToLoad } = useRhema();
     const [copied, setCopied] = useState(false);
     const [saved, setSaved] = useState(false);
     const [isJournalOpen, setIsJournalOpen] = useState(false);
@@ -135,11 +139,21 @@ export function MessageBubble({ role, content, mode = "exegesis", query = "" }: 
                         <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => setIsJournalOpen(true)}
-                            className="h-7 text-xs text-gray-400 hover:text-indigo-400 hover:bg-gray-800/60"
+                            onClick={() => {
+                                setSermonToLoad({
+                                    title: query || "Exegetical Sermon Outline",
+                                    scripture: query || "John 15:5",
+                                    tone: mode === 'devotion' ? "Pastoral" : "Expository",
+                                    notes: `<h2>Theological Exegesis</h2><p>${content.replace(/\n\n/g, '</p><p>')}</p>`,
+                                    context: []
+                                });
+                                router.push("/studio");
+                                toast.success("Sent to Sermon Studio");
+                            }}
+                            className="h-7 text-xs text-gray-400 hover:text-[#D4AF37] hover:bg-gray-800/60"
                         >
-                            <BookOpen className="h-3.5 w-3.5 mr-1" />
-                            Journal on this
+                            <Palette className="h-3.5 w-3.5 mr-1" />
+                            Send to Studio
                         </Button>
                     </div>
                 </div>

@@ -7,14 +7,20 @@
 class RhemaAudioEngine {
     private ctx: AudioContext | null = null;
     private masterGain: GainNode | null = null;
+    private padGain: GainNode | null = null;
     private activeNodes: { stop: () => void }[] = [];
     private currentMode: string | null = null;
+    private currentKey: string = 'C';
+    private currentVolume: number = 0.5;
+    private isDuckingActive: boolean = false;
 
     private getContext(): AudioContext {
         if (!this.ctx || this.ctx.state === 'closed') {
             const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
             this.ctx = new AudioCtx();
             this.masterGain = this.ctx.createGain();
+            this.padGain = this.ctx.createGain();
+            this.padGain.connect(this.masterGain);
             this.masterGain.connect(this.ctx.destination);
         }
         if (this.ctx.state === 'suspended') {
@@ -24,10 +30,16 @@ class RhemaAudioEngine {
     }
 
     public setVolume(vol: number) {
+        this.currentVolume = Math.max(0, Math.min(1, vol));
         if (this.masterGain && this.ctx) {
-            const safeVol = Math.max(0, Math.min(1, vol));
-            this.masterGain.gain.setValueAtTime(safeVol, this.ctx.currentTime);
+            const target = this.isDuckingActive ? this.currentVolume * 0.35 : this.currentVolume;
+            this.masterGain.gain.setValueAtTime(target, this.ctx.currentTime);
         }
+    }
+
+    public setDucking(enabled: boolean) {
+        this.isDuckingActive = enabled;
+        this.setVolume(this.currentVolume);
     }
 
     public stop() {
@@ -42,9 +54,17 @@ class RhemaAudioEngine {
         this.currentMode = null;
     }
 
-    public play(soundId: string, volume: number = 0.5) {
+    public setKey(key: string) {
+        this.currentKey = key.toUpperCase();
+        if (this.currentMode === 'chords' || this.currentMode === 'piano' || this.currentMode === 'pad') {
+            this.play(this.currentMode, this.currentVolume, this.currentKey);
+        }
+    }
+
+    public play(soundId: string, volume: number = 0.5, key: string = 'C') {
         this.stop();
         const ctx = this.getContext();
+        this.currentKey = key.toUpperCase();
         this.setVolume(volume);
         this.currentMode = soundId;
 
@@ -54,7 +74,8 @@ class RhemaAudioEngine {
                 break;
             case 'piano':
             case 'chords':
-                this.generateSanctuaryPads(ctx);
+            case 'pad':
+                this.generateSanctuaryPads(ctx, this.currentKey);
                 break;
             case 'drone':
                 this.generateSoakingDrone(ctx);
@@ -112,10 +133,18 @@ class RhemaAudioEngine {
     /**
      * Secret Place: Authentic 432Hz Harmonic Prayer Pad (A4=432Hz tuning standard) with warm lowpass warmth
      */
-    private generateSanctuaryPads(ctx: AudioContext) {
-        // True A4=432Hz standard pitch (multiplier 432/440 ~ 0.9818):
-        // C3 (128.43Hz), G3 (192.44Hz), C4 (256.87Hz), E4 (323.63Hz)
-        const freqs = [128.43, 192.44, 256.87, 323.63];
+    private generateSanctuaryPads(ctx: AudioContext, key: string = 'C') {
+        const KEY_FREQS: Record<string, number[]> = {
+            C: [128.43, 192.44, 256.87, 323.63],
+            D: [144.15, 215.99, 288.30, 363.26],
+            E: [161.80, 242.43, 323.60, 407.72],
+            F: [171.42, 256.86, 342.84, 431.97],
+            G: [192.44, 288.31, 384.88, 484.89],
+            A: [216.00, 323.63, 432.00, 544.27],
+            B: [242.43, 363.26, 484.86, 610.87],
+        };
+
+        const freqs = KEY_FREQS[key.toUpperCase()] || KEY_FREQS['C'];
 
         freqs.forEach((freq, idx) => {
             const osc = ctx.createOscillator();
@@ -132,7 +161,7 @@ class RhemaAudioEngine {
 
             osc.connect(filter);
             filter.connect(gain);
-            gain.connect(this.masterGain!);
+            gain.connect(this.padGain || this.masterGain!);
 
             osc.start();
             this.activeNodes.push(osc);

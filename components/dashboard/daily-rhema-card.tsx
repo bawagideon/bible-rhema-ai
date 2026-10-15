@@ -126,90 +126,99 @@ export function DailyRhemaCard({ className, initialData, heroMode = false }: Dai
 
     if (!data) return null;
 
+    const handleCopyVerse = () => {
+        if (!data) return;
+        navigator.clipboard.writeText(`"${data.scripture_text}" — ${data.scripture_ref}`);
+        toast.success("Scripture copied to clipboard");
+    };
+
+    const handleWhatsAppShare = () => {
+        if (!data) return;
+        const text = encodeURIComponent(`*Daily Rhema*\n"${data.scripture_text}"\n— ${data.scripture_ref}\n\nRead more on Bible Rhema AI: https://bible-rhema-ai.vercel.app`);
+        window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
+    };
+
     return (
-        <Card className={cn("relative overflow-hidden border-border/60 bg-gradient-to-br from-card to-card/50 transition-all duration-500",
-            heroMode ? "min-h-[400px] flex flex-col justify-center border-primary/20 shadow-xl shadow-primary/5" : "",
+        <Card className={cn(
+            "relative overflow-hidden border border-[#D4AF37]/30 bg-gradient-to-br from-[#121214] via-[#0d0d0f] to-[#141418] transition-all duration-500 rounded-2xl shadow-xl shadow-black/40",
             className
         )}>
-            {/* Decorative Gold Gradient Border Effect */}
-            <div className="absolute inset-0 bg-gradient-to-r from-primary/20 via-transparent to-primary/5 opacity-50 pointer-events-none" />
-            <div className="absolute top-0 left-0 w-1 h-full bg-primary/40" />
+            {/* Gold Accent Glow */}
+            <div className="absolute top-0 right-0 w-80 h-80 bg-[#D4AF37]/10 rounded-full blur-[100px] pointer-events-none" />
+            <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-[#D4AF37] via-[#D4AF37]/40 to-transparent" />
 
-            <CardContent className="p-6 md:p-10 relative z-10 flex flex-col gap-6">
-                <div className="flex items-center justify-between text-muted-foreground text-sm uppercase tracking-widest">
-                    <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4" />
-                        <span>{data.date}</span>
-                    </div>
-                    <div className="flex items-center gap-1 text-primary/80">
+            <CardContent className="p-6 md:p-8 relative z-10 flex flex-col gap-6">
+                {/* Kicker Header */}
+                <div className="flex items-center justify-between text-xs tracking-wider">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37] font-semibold uppercase text-[11px]">
                         <Sparkles className="w-3 h-3" />
-                        <span>{heroMode ? "Morning Manna" : "Daily Rhema"}</span>
+                        <span>Daily Rhema · {data.scripture_ref}</span>
                     </div>
+                    <span className="text-xs text-muted-foreground hidden sm:inline">{data.date}</span>
                 </div>
 
-                <div className="space-y-6">
-                    <div className="space-y-2">
-                        <blockquote className={cn(
-                            "font-serif leading-tight text-foreground border-l-4 border-primary/20 pl-6 italic transition-all",
-                            heroMode ? "text-3xl md:text-5xl" : "text-2xl md:text-3xl"
-                        )}>
-                            "{data.scripture_text}"
-                        </blockquote>
-                        <p className="text-right text-lg font-serif text-primary mt-2 flex items-center justify-end gap-2">
-                            <span className="w-8 h-[1px] bg-primary/50" />
-                            {data.scripture_ref}
-                        </p>
-                    </div>
-
-                    {heroMode && (
-                        <p className="text-xl text-muted-foreground font-light max-w-2xl leading-relaxed">
-                            {data.content}
-                        </p>
-                    )}
+                {/* Italic Serif Verse */}
+                <div className="space-y-4">
+                    <blockquote className="font-serif text-2xl md:text-3xl text-foreground font-normal italic leading-relaxed tracking-wide">
+                        “{data.scripture_text}”
+                    </blockquote>
+                    <p className="text-xs md:text-sm text-muted-foreground leading-relaxed">
+                        One verse, one question to sit with, one small step for today: <span className="text-foreground/90 italic">{data.content}</span>
+                    </p>
                 </div>
 
-                {!heroMode && (
-                    <div className="bg-muted/30 rounded-lg p-5 border border-border/50 backdrop-blur-sm">
-                        <p className="text-sm md:text-base text-muted-foreground leading-relaxed">
-                            <strong className="text-foreground/90 mr-1">Insight:</strong>
-                            {data.content}
-                        </p>
-                        <div className="mt-4 pt-4 border-t border-border/40">
-                            <p className="text-sm text-primary/90 italic">
-                                <span className="font-semibold not-italic text-muted-foreground mr-1">Prayer:</span>
-                                {data.prayer_focus}
-                            </p>
-                        </div>
+                {/* Action Bar */}
+                <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-border/40">
+                    <div className="flex items-center gap-3">
+                        <Link href={`/spirit-os?prompt=${encodeURIComponent(`Reflect on ${data.scripture_ref}: ${data.scripture_text}`)}`}>
+                            <Button className="bg-[#D4AF37] hover:bg-[#b5952f] text-black font-semibold text-xs h-9 px-4 shadow-sm shadow-[#D4AF37]/20">
+                                Reflect on this →
+                            </Button>
+                        </Link>
+                        <Link href={`/spirit-os?prompt=${encodeURIComponent(`Exegesis of ${data.scripture_ref}`)}`}>
+                            <Button variant="outline" className="border-border text-foreground hover:bg-muted text-xs h-9 px-3">
+                                Open in SpiritOS
+                            </Button>
+                        </Link>
                     </div>
-                )}
 
-                <div className="pt-4 flex justify-between items-center">
-                    {heroMode ? (
-                        <Link href="/altar?mode=morning_prayer">
-                            <Button size="lg" className="bg-[#D4AF37] hover:bg-[#b5952f] text-black font-semibold min-w-[200px] h-14 text-lg shadow-lg shadow-[#D4AF37]/20">
-                                Start Morning Prayer
-                            </Button>
-                        </Link>
-                    ) : (
-                        <Link href="/sanctuary">
-                            <Button className="bg-primary hover:bg-primary/90 text-black font-semibold min-w-[140px]">
-                                Meditate
-                            </Button>
-                        </Link>
-                    )}
-
-                    {isMinister && (
+                    <div className="flex items-center gap-2">
                         <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => generateRhema()}
-                            disabled={generating}
-                            className={cn("text-muted-foreground hover:text-primary", generating && "animate-spin")}
-                            title="Request New Manna (Minister Only)"
+                            onClick={handleWhatsAppShare}
+                            className="h-8 w-8 text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/10"
+                            title="Share on WhatsApp"
                         >
-                            <RefreshCw className="w-4 h-4" />
+                            <svg className="h-4 w-4 fill-current" viewBox="0 0 24 24">
+                                <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z" />
+                            </svg>
                         </Button>
-                    )}
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={handleCopyVerse}
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            title="Copy verse"
+                        >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                        </Button>
+
+                        {isMinister && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => generateRhema()}
+                                disabled={generating}
+                                className={cn("h-8 w-8 text-muted-foreground hover:text-[#D4AF37]", generating && "animate-spin")}
+                                title="Request fresh Rhema (Minister only)"
+                            >
+                                <RefreshCw className="w-3.5 h-3.5" />
+                            </Button>
+                        )}
+                    </div>
                 </div>
             </CardContent>
         </Card>
