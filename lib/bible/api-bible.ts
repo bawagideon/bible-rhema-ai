@@ -170,6 +170,28 @@ export function detectScriptureReference(text: string): string | null {
 }
 
 /**
+ * Extracts all unique Scripture references from a block of text or HTML
+ */
+export function extractAllScriptureReferences(text: string): string[] {
+    if (!text || typeof text !== 'string') return [];
+
+    // Strip HTML tags if present
+    const plain = text.replace(/<[^>]+>/g, ' ');
+
+    const scriptureRegex = /\b(?:[123]\s+)?(?:Genesis|Exodus|Leviticus|Numbers|Deuteronomy|Joshua|Judges|Ruth|[12]\s+Samuel|[12]\s+Kings|[12]\s+Chronicles|Ezra|Nehemiah|Esther|Job|Psalms?|Proverbs|Ecclesiastes|Song of Solomon|Song of Songs|Isaiah|Jeremiah|Lamentations|Ezekiel|Daniel|Hosea|Joel|Amos|Obadiah|Jonah|Micah|Nahum|Habakkuk|Zephaniah|Haggai|Zechariah|Malachi|Matthew|Mark|Luke|John|Acts|Romans|[12]\s+Corinthians|Galatians|Ephesians|Philippians|Colossians|[12]\s+Thessalonians|[12]\s+Timothy|Titus|Philemon|Hebrews|James|[12]\s+Peter|[123]\s+John|Jude|Revelation)\s+\d+(?::\d+(?:-\d+)?)?\b/gi;
+
+    const matches = plain.match(scriptureRegex) || [];
+    const unique = new Set<string>();
+    for (const m of matches) {
+        const cleaned = m.trim().replace(/\s+/g, ' ');
+        if (cleaned) {
+            unique.add(cleaned);
+        }
+    }
+    return Array.from(unique);
+}
+
+/**
  * Fetch verified Scripture passage with honest translation labeling
  */
 export async function resolveScripturePassage(

@@ -6,6 +6,7 @@ import { Download, Loader2, Printer } from "lucide-react";
 import type { SermonData } from "./sermon-builder";
 import { useRhema } from "@/lib/store/rhema-context";
 import { toast } from "sonner";
+import { UpgradeDialog } from "./upgrade-dialog";
 
 interface LivePreviewProps {
     data: SermonData;
@@ -14,7 +15,8 @@ interface LivePreviewProps {
 export function LivePreview({ data }: LivePreviewProps) {
     const paperRef = useRef<HTMLDivElement>(null);
     const [isGenerating, setIsGenerating] = useState(false);
-    const { pdfExportTimestamp } = useRhema();
+    const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
+    const { pdfExportTimestamp, userTier } = useRhema();
 
     // Listen for export trigger from Right Panel
     useEffect(() => {
@@ -24,6 +26,12 @@ export function LivePreview({ data }: LivePreviewProps) {
     }, [pdfExportTimestamp]);
 
     const handleDownload = async () => {
+        if (userTier !== 'MINISTER') {
+            toast.error("Manuscript PDF export requires an active Minister subscription.");
+            setShowUpgradeDialog(true);
+            return;
+        }
+
         if (!paperRef.current) return;
         setIsGenerating(true);
         const toastId = toast.loading("Generating PDF...");
@@ -53,6 +61,11 @@ export function LivePreview({ data }: LivePreviewProps) {
 
     return (
         <div className="h-full w-full bg-[#1c1c1c] flex flex-col items-center p-8 overflow-y-auto relative">
+            <UpgradeDialog
+                isOpen={showUpgradeDialog}
+                onOpenChange={setShowUpgradeDialog}
+                featureName="Manuscript PDF Export"
+            />
             {/* The Desk Texture */}
             <div className="absolute inset-0 bg-gradient-to-br from-[#1c1c1c] to-[#0a0a0a] opacity-50 pointer-events-none" />
 

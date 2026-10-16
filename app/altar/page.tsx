@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Flame, ScrollText, CheckCircle2, Users, HeartHandshake, Shield, Sparkles, Check, Trash2 } from "lucide-react";
+import { Plus, Flame, ScrollText, CheckCircle2, Users, HeartHandshake, Shield, Sparkles, Check, Trash2, Flag, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 interface PrayerItem {
     id: string;
     user_id: string;
+    is_author?: boolean;
     title: string;
     description?: string;
     author_name?: string;
@@ -45,6 +46,7 @@ export default function AltarPage() {
     const [newDescription, setNewDescription] = useState("");
     const [newScripture, setNewScripture] = useState("");
     const [isCommunity, setIsCommunity] = useState(false);
+    const [communityConsent, setCommunityConsent] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Fetch user stats & prayers
@@ -89,6 +91,11 @@ export default function AltarPage() {
             return;
         }
 
+        if (isCommunity && !communityConsent) {
+            toast.error("Please confirm your consent to publish to the community prayer wall.");
+            return;
+        }
+
         setIsSubmitting(true);
         try {
             const res = await fetch('/api/prayers', {
@@ -99,6 +106,7 @@ export default function AltarPage() {
                     description: newDescription.trim() || undefined,
                     scripture_ref: newScripture.trim() || undefined,
                     is_community: isCommunity,
+                    community_consent: isCommunity ? communityConsent : false,
                     author_name: user?.firstName || 'Fellow Believer'
                 })
             });
@@ -111,6 +119,7 @@ export default function AltarPage() {
                 setNewDescription("");
                 setNewScripture("");
                 setIsCommunity(false);
+                setCommunityConsent(false);
                 fetchAllData();
             } else {
                 toast.error(data.error || "Failed to place prayer.");
@@ -119,6 +128,45 @@ export default function AltarPage() {
             toast.error("Connection error: " + e.message);
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    const handleReportPrayer = async (prayerId: string) => {
+        try {
+            const res = await fetch('/api/prayers', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: prayerId, action: 'report' })
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast.success(data.message || "Petition reported and removed for moderation.");
+                setCommunityPrayers(prev => prev.filter(p => p.id !== prayerId));
+            } else {
+                toast.error(data.error || "Failed to report petition.");
+            }
+        } catch (e: any) {
+            toast.error("Network error: " + e.message);
+        }
+    };
+
+    const handleUnpublishPrayer = async (prayerId: string) => {
+        try {
+            const res = await fetch('/api/prayers', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: prayerId, is_community: false })
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast.success("Petition moved to your private Secret Place.");
+                setCommunityPrayers(prev => prev.filter(p => p.id !== prayerId));
+                fetchAllData();
+            } else {
+                toast.error(data.error || "Failed to unpublish.");
+            }
+        } catch (e: any) {
+            toast.error("Network error: " + e.message);
         }
     };
 
@@ -209,6 +257,7 @@ export default function AltarPage() {
                     title: quickTitle.trim(),
                     scripture_ref: quickScripture.trim() || undefined,
                     is_community: quickIsCommunity,
+                    community_consent: quickIsCommunity,
                     author_name: user?.firstName || 'Fellow Believer'
                 })
             });
@@ -296,21 +345,41 @@ export default function AltarPage() {
                                     </div>
 
                                     {/* Community Opt-in Toggle */}
-                                    <div className="p-3.5 rounded-xl border border-gray-800 bg-[#16161a] flex items-start space-x-3">
-                                        <Checkbox
-                                            id="comm"
-                                            checked={isCommunity}
-                                            onCheckedChange={(checked) => setIsCommunity(Boolean(checked))}
-                                            className="mt-0.5"
-                                        />
-                                        <div className="space-y-0.5">
-                                            <label htmlFor="comm" className="text-xs font-semibold text-white cursor-pointer">
-                                                Share with community
-                                            </label>
-                                            <p className="text-[11px] text-gray-400">
-                                                If checked, believers across Bible Rhema AI can see and pray with you. If unchecked, it remains strictly private in your secret place.
-                                            </p>
+                                    <div className="p-3.5 rounded-xl border border-gray-800 bg-[#16161a] space-y-3">
+                                        <div className="flex items-start space-x-3">
+                                            <Checkbox
+                                                id="comm"
+                                                checked={isCommunity}
+                                                onCheckedChange={(checked) => {
+                                                    const val = Boolean(checked);
+                                                    setIsCommunity(val);
+                                                    if (!val) setCommunityConsent(false);
+                                                }}
+                                                className="mt-0.5"
+                                            />
+                                            <div className="space-y-0.5">
+                                                <label htmlFor="comm" className="text-xs font-semibold text-white cursor-pointer">
+                                                    Share with community prayer wall
+                                                </label>
+                                                <p className="text-[11px] text-gray-400">
+                                                    If checked, believers across Bible Rhema AI can see and pray with you. If unchecked, it remains strictly private in your secret place.
+                                                </p>
+                                            </div>
                                         </div>
+
+                                        {isCommunity && (
+                                            <div className="pt-2 border-t border-gray-800/80 flex items-start space-x-3 pl-2">
+                                                <Checkbox
+                                                    id="comm-consent"
+                                                    checked={communityConsent}
+                                                    onCheckedChange={(checked) => setCommunityConsent(Boolean(checked))}
+                                                    className="mt-0.5 data-[state=checked]:bg-[#D4AF37] data-[state=checked]:border-[#D4AF37]"
+                                                />
+                                                <label htmlFor="comm-consent" className="text-[11px] text-[#D4AF37] cursor-pointer leading-tight">
+                                                    I understand this prayer will be visible to other believers on the public prayer wall, and I explicitly consent to publish it.
+                                                </label>
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="flex justify-end gap-2 pt-2">
@@ -563,7 +632,7 @@ export default function AltarPage() {
                                     If you are in danger or crisis
                                 </span>
                                 <p className="text-rose-200/90 leading-relaxed text-[11px]">
-                                    If you are experiencing overwhelming distress, thoughts of self-harm, or an acute crisis, please reach out for immediate professional care. In Nigeria, dial <strong>112</strong> (National Emergency) or contact the Lagos State Lifeline at <strong>0800 000 0000</strong>. You are deeply loved by God and not alone.
+                                    If you are experiencing overwhelming distress, thoughts of self-harm, or an acute crisis, please reach out for immediate professional care. In Nigeria, dial <strong>112</strong> (National Emergency Toll-Free) or reach mental health lifelines: <strong>MANI (0809 111 6264)</strong> or Lagos State Lifeline <strong>(0800 800 2000)</strong>. You are deeply loved by God and not alone.
                                 </p>
                             </div>
                         </div>
@@ -618,9 +687,29 @@ export default function AltarPage() {
                                                     <span className="text-xs font-semibold text-[#D4AF37]">
                                                         {prayer.author_name || "Fellow Believer"}
                                                     </span>
-                                                    <span className="text-[11px] text-gray-500">
-                                                        {new Date(prayer.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                                                    </span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[11px] text-gray-500">
+                                                            {new Date(prayer.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                                        </span>
+                                                        {prayer.is_author ? (
+                                                            <button
+                                                                onClick={() => handleUnpublishPrayer(prayer.id)}
+                                                                className="text-[10px] text-amber-400/80 hover:text-amber-300 flex items-center gap-1 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20"
+                                                                title="Remove from public wall back to your Secret Place"
+                                                            >
+                                                                <Lock className="w-3 h-3" />
+                                                                Make Private
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => handleReportPrayer(prayer.id)}
+                                                                className="text-gray-500 hover:text-rose-400 transition-colors p-1"
+                                                                title="Report inappropriate content"
+                                                            >
+                                                                <Flag className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
 
                                                 <h4 className="text-base font-semibold text-white">{prayer.title}</h4>

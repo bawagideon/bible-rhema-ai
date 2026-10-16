@@ -1,19 +1,104 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Volume2, VolumeX, Sparkles, Music, Mic, Radio, ExternalLink, Play, Pause } from "lucide-react";
+import { Volume2, VolumeX, Sparkles, Music, Mic, Radio, ExternalLink, Play, Pause, Bookmark, Check, Info } from "lucide-react";
 import { rhemaAudio } from "@/lib/audio-engine";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const KEYS = ["C", "D", "E", "F", "G", "A", "B"];
 const PAD_STYLES = [
     { id: "pad", label: "Soaking Pad" },
     { id: "rain", label: "Rainfall" },
     { id: "waters", label: "Still Waters" },
+];
+
+export interface ScripturePassageOption {
+    id: string;
+    ref: string;
+    title: string;
+    text: string;
+}
+
+export const SCRIPTURE_PASSAGES: ScripturePassageOption[] = [
+    {
+        id: "psalm-23",
+        ref: "Psalm 23:1-6",
+        title: "The Good Shepherd",
+        text: "The Lord is my shepherd; I shall not want. He maketh me to lie down in green pastures: he leadeth me beside the still waters. He restoreth my soul: he leadeth me in the paths of righteousness for his name's sake. Yea, though I walk through the valley of the shadow of death, I will fear no evil: for thou art with me; thy rod and thy staff they comfort me. Thou preparest a table before me in the presence of mine enemies: thou anointest my head with oil; my cup runneth over. Surely goodness and mercy shall follow me all the days of my life: and I will dwell in the house of the Lord for ever."
+    },
+    {
+        id: "psalm-46",
+        ref: "Psalm 46:1-10",
+        title: "Be Still and Know",
+        text: "God is our refuge and strength, a very present help in trouble. Therefore will not we fear, though the earth be removed, and though the mountains be carried into the midst of the sea. There is a river, the streams whereof shall make glad the city of God, the holy place of the tabernacles of the most High. God is in the midst of her; she shall not be moved: God shall help her, and that right early. Be still, and know that I am God: I will be exalted among the heathen, I will be exalted in the earth. The Lord of hosts is with us; the God of Jacob is our refuge."
+    },
+    {
+        id: "psalm-91",
+        ref: "Psalm 91:1-6",
+        title: "The Secret Place",
+        text: "He that dwelleth in the secret place of the most High shall abide under the shadow of the Almighty. I will say of the Lord, He is my refuge and my fortress: my God; in him will I trust. Surely he shall deliver thee from the snare of the fowler, and from the noisome pestilence. He shall cover thee with his feathers, and under his wings shalt thou trust: his truth shall be thy shield and buckler. Thou shalt not be afraid for the terror by night; nor for the arrow that flieth by day."
+    },
+    {
+        id: "john-15",
+        ref: "John 15:1-8",
+        title: "The True Vine",
+        text: "I am the true vine, and my Father is the husbandman. Every branch in me that beareth not fruit he taketh away: and every branch that beareth fruit, he purgeth it, that it may bring forth more fruit. Now ye are clean through the word which I have spoken unto you. Abide in me, and I in you. As the branch cannot bear fruit of itself, except it abide in the vine; no more can ye, except ye abide in me. I am the vine, ye are the branches: He that abideth in me, and I in him, the same bringeth forth much fruit: for without me ye can do nothing."
+    },
+    {
+        id: "romans-8",
+        ref: "Romans 8:31-39",
+        title: "More Than Conquerors",
+        text: "What shall we then say to these things? If God be for us, who can be against us? He that spared not his own Son, but delivered him up for us all, how shall he not with him also freely give us all things? Who shall separate us from the love of Christ? shall tribulation, or distress, or persecution, or famine, or nakedness, or peril, or sword? Nay, in all these things we are more than conquerors through him that loved us. For I am persuaded, that neither death, nor life, nor angels, nor principalities, nor powers, nor things present, nor things to come, nor height, nor depth, nor any other creature, shall be able to separate us from the love of God, which is in Christ Jesus our Lord."
+    }
+];
+
+interface MixPreset {
+    id: string;
+    name: string;
+    padStyle: string;
+    padKey: string;
+    padVolume: number;
+    passageId: string;
+    voiceVolume: number;
+    isDucking: boolean;
+}
+
+const DEFAULT_PRESETS: MixPreset[] = [
+    {
+        id: "secret-place",
+        name: "Secret Place",
+        padStyle: "pad",
+        padKey: "C",
+        padVolume: 0.7,
+        passageId: "psalm-91",
+        voiceVolume: 0.85,
+        isDucking: true
+    },
+    {
+        id: "morning-watch",
+        name: "Morning Watch",
+        padStyle: "waters",
+        padKey: "G",
+        padVolume: 0.55,
+        passageId: "psalm-23",
+        voiceVolume: 0.8,
+        isDucking: true
+    },
+    {
+        id: "midnight-intercession",
+        name: "Midnight Cry",
+        padStyle: "rain",
+        padKey: "D",
+        padVolume: 0.65,
+        passageId: "romans-8",
+        voiceVolume: 0.9,
+        isDucking: true
+    }
 ];
 
 export function LeviteMixer() {
@@ -23,10 +108,13 @@ export function LeviteMixer() {
     const [padVolume, setPadVolume] = useState(0.6);
     const [isPadPlaying, setIsPadPlaying] = useState(false);
 
-    // Fader 2: Scripture Voice
-    const [voiceVolume, setVoiceVolume] = useState(0.8);
+    // Fader 2: Scripture Voice (Real Web Speech API Narration)
+    const [voiceVolume, setVoiceVolume] = useState(0.85);
+    const [selectedPassageId, setSelectedPassageId] = useState("psalm-23");
     const [isDucking, setIsDucking] = useState(true);
     const [isVoicePlaying, setIsVoicePlaying] = useState(false);
+    const [speechSupported, setSpeechSupported] = useState(true);
+    const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
     // Fader 3: Worship Playlist
     const [worshipVolume, setWorshipVolume] = useState(0.4);
@@ -37,6 +125,23 @@ export function LeviteMixer() {
     // Timer & Session
     const [timerMinutes, setTimerMinutes] = useState(15);
     const [fadeOutAtEnd, setFadeOutAtEnd] = useState(true);
+
+    // Presets
+    const [activePreset, setActivePreset] = useState<string>("secret-place");
+
+    const selectedPassage = SCRIPTURE_PASSAGES.find(p => p.id === selectedPassageId) || SCRIPTURE_PASSAGES[0];
+
+    // Check Speech Synthesis capability
+    useEffect(() => {
+        if (typeof window !== "undefined") {
+            setSpeechSupported('speechSynthesis' in window);
+        }
+        return () => {
+            if (typeof window !== "undefined" && window.speechSynthesis) {
+                window.speechSynthesis.cancel();
+            }
+        };
+    }, []);
 
     // Handle Pad Play/Pause
     const togglePadPlay = () => {
@@ -83,13 +188,114 @@ export function LeviteMixer() {
         }
     };
 
-    // Voice Play Toggle (Mock/Bible Brain)
-    const toggleVoicePlay = () => {
-        const next = !isVoicePlaying;
-        setIsVoicePlaying(next);
-        if (rhemaAudio && isDucking) {
-            rhemaAudio.setDucking(next);
+    // Real Scripture Speech Synthesis
+    const stopScriptureVoice = () => {
+        if (typeof window !== "undefined" && window.speechSynthesis) {
+            window.speechSynthesis.cancel();
         }
+        setIsVoicePlaying(false);
+        if (rhemaAudio) {
+            rhemaAudio.setDucking(false);
+        }
+    };
+
+    const startScriptureVoice = (passageToSpeak = selectedPassage) => {
+        if (typeof window === "undefined" || !window.speechSynthesis) {
+            toast.error("Speech Synthesis is not supported in this browser.");
+            return;
+        }
+
+        window.speechSynthesis.cancel();
+
+        const utterance = new SpeechSynthesisUtterance(passageToSpeak.text);
+        utterance.volume = voiceVolume;
+        utterance.rate = 0.88; // Reverent, gentle, calm pace
+        utterance.pitch = 0.95;
+
+        // Choose a calm English voice if available
+        const voices = window.speechSynthesis.getVoices();
+        const preferredVoice = voices.find(v =>
+            v.lang.startsWith("en") &&
+            (v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Daniel") || v.name.includes("Samantha"))
+        ) || voices.find(v => v.lang.startsWith("en"));
+
+        if (preferredVoice) {
+            utterance.voice = preferredVoice;
+        }
+
+        utterance.onstart = () => {
+            setIsVoicePlaying(true);
+            if (rhemaAudio && isDucking) {
+                rhemaAudio.setDucking(true);
+            }
+        };
+
+        utterance.onend = () => {
+            setIsVoicePlaying(false);
+            if (rhemaAudio) {
+                rhemaAudio.setDucking(false);
+            }
+        };
+
+        utterance.onerror = (e) => {
+            console.warn("Scripture voice playback stopped or interrupted:", e);
+            setIsVoicePlaying(false);
+            if (rhemaAudio) {
+                rhemaAudio.setDucking(false);
+            }
+        };
+
+        utteranceRef.current = utterance;
+        window.speechSynthesis.speak(utterance);
+    };
+
+    const toggleVoicePlay = () => {
+        if (isVoicePlaying) {
+            stopScriptureVoice();
+        } else {
+            startScriptureVoice();
+        }
+    };
+
+    // Update voice volume live
+    const handleVoiceVolumeChange = (vol: number) => {
+        setVoiceVolume(vol);
+        if (isVoicePlaying) {
+            // Re-apply to ongoing speech
+            stopScriptureVoice();
+            setTimeout(() => {
+                startScriptureVoice();
+            }, 50);
+        }
+    };
+
+    // Switch Scripture Passage
+    const handlePassageSelect = (id: string) => {
+        setSelectedPassageId(id);
+        const next = SCRIPTURE_PASSAGES.find(p => p.id === id);
+        if (isVoicePlaying && next) {
+            stopScriptureVoice();
+            setTimeout(() => {
+                startScriptureVoice(next);
+            }, 100);
+        }
+    };
+
+    // Load Mix Preset
+    const applyPreset = (preset: MixPreset) => {
+        setActivePreset(preset.id);
+        setPadStyle(preset.padStyle);
+        setPadKey(preset.padKey);
+        setPadVolume(preset.padVolume);
+        setSelectedPassageId(preset.passageId);
+        setVoiceVolume(preset.voiceVolume);
+        setIsDucking(preset.isDucking);
+
+        if (isPadPlaying && rhemaAudio) {
+            rhemaAudio.play(preset.padStyle, preset.padVolume, preset.padKey);
+        }
+
+        toast.success(`Applied preset: ${preset.name}`);
     };
 
     return (
@@ -121,6 +327,31 @@ export function LeviteMixer() {
                         {isPadPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
                         <span>{isPadPlaying ? "Pause Levite Pad" : "Start Levite Pad"}</span>
                     </Button>
+                </div>
+            </div>
+
+            {/* Presets Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl bg-[#141418] border border-gray-800/80">
+                <div className="flex items-center gap-2">
+                    <Bookmark className="w-3.5 h-3.5 text-[#D4AF37]" />
+                    <span className="text-xs font-semibold text-white">Atmosphere Presets:</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    {DEFAULT_PRESETS.map((pr) => (
+                        <button
+                            key={pr.id}
+                            onClick={() => applyPreset(pr)}
+                            className={cn(
+                                "px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5",
+                                activePreset === pr.id
+                                    ? "bg-[#D4AF37] text-black font-semibold shadow-sm"
+                                    : "bg-[#1c1c22] border border-gray-800 text-gray-300 hover:text-white"
+                            )}
+                        >
+                            {activePreset === pr.id && <Check className="w-3 h-3" />}
+                            {pr.name}
+                        </button>
+                    ))}
                 </div>
             </div>
 
@@ -202,7 +433,7 @@ export function LeviteMixer() {
                     </div>
                 </div>
 
-                {/* FADER 2: SCRIPTURE VOICE */}
+                {/* FADER 2: SCRIPTURE VOICE (REAL LIVE NARRATION) */}
                 <div className="bg-[#15151a] border border-gray-800 rounded-2xl p-5 flex flex-col justify-between space-y-6">
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
@@ -220,30 +451,53 @@ export function LeviteMixer() {
                                 value={[voiceVolume * 100]}
                                 max={100}
                                 step={1}
-                                onValueChange={(val) => setVoiceVolume(val[0] / 100)}
+                                onValueChange={(val) => handleVoiceVolumeChange(val[0] / 100)}
                                 className="cursor-pointer"
                             />
                         </div>
 
-                        {/* Voice Controls */}
+                        {/* Passage Selection Dropdown / Selector */}
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                Select Scripture Passage
+                            </label>
+                            <select
+                                value={selectedPassageId}
+                                onChange={(e) => handlePassageSelect(e.target.value)}
+                                className="w-full text-xs p-2 rounded-lg bg-[#1b1b22] border border-gray-800 text-white font-medium focus:border-blue-500 focus:outline-none"
+                            >
+                                {SCRIPTURE_PASSAGES.map((p) => (
+                                    <option key={p.id} value={p.id} className="bg-[#141416] text-white">
+                                        {p.ref} · {p.title}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Voice Controls with Real Playback */}
                         <div className="p-3 rounded-xl bg-[#1b1b22] border border-gray-800/80 space-y-2.5">
                             <div className="flex items-center justify-between">
-                                <span className="text-xs font-medium text-white">Narrated Passage</span>
+                                <span className="text-xs font-medium text-white">{selectedPassage.ref}</span>
                                 <Badge variant="outline" className="text-[9px] border-blue-500/30 text-blue-400 uppercase">
-                                    Bible Brain API
+                                    Web Speech API
                                 </Badge>
                             </div>
-                            <p className="text-xs text-muted-foreground line-clamp-2">
-                                "Be still, and know that I am God: I will be exalted among the heathen..."
+                            <p className="text-[11px] text-muted-foreground line-clamp-3 italic">
+                                "{selectedPassage.text}"
                             </p>
                             <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={toggleVoicePlay}
-                                className="w-full text-xs h-8 border-gray-700 bg-black/40 text-gray-200 hover:text-white"
+                                className={cn(
+                                    "w-full text-xs h-8 border-gray-700 transition-colors",
+                                    isVoicePlaying
+                                        ? "bg-blue-600/20 text-blue-400 border-blue-500/40 hover:bg-blue-600/30"
+                                        : "bg-black/40 text-gray-200 hover:text-white"
+                                )}
                             >
                                 {isVoicePlaying ? <Pause className="w-3.5 h-3.5 mr-1" /> : <Play className="w-3.5 h-3.5 mr-1" />}
-                                {isVoicePlaying ? "Pause Scripture Narration" : "Play Scripture Voice"}
+                                {isVoicePlaying ? "Pause Scripture Narration" : "Read Scripture Aloud"}
                             </Button>
                         </div>
 
@@ -254,7 +508,7 @@ export function LeviteMixer() {
                                     Automatic Ducking
                                 </label>
                                 <span className="text-[10px] text-muted-foreground block">
-                                    Lower the pad while voice speaks
+                                    Ducks procedural pad to 35% when voice speaks
                                 </span>
                             </div>
                             <Switch
@@ -265,7 +519,7 @@ export function LeviteMixer() {
                     </div>
 
                     <div className="text-[10px] text-muted-foreground/70 italic border-t border-gray-800/60 pt-3">
-                        Public domain dramatized voice audio with auto-ducking.
+                        Local client-side speech synthesis with real-time pad ducking.
                     </div>
                 </div>
 
@@ -277,19 +531,16 @@ export function LeviteMixer() {
                                 <Radio className="w-3.5 h-3.5" /> Fader 3: Worship Stream
                             </span>
                             <span className="text-xs font-mono font-semibold text-foreground">
-                                {Math.round(worshipVolume * 100)}%
+                                External
                             </span>
                         </div>
 
-                        {/* Volume Slider */}
-                        <div className="py-2">
-                            <Slider
-                                value={[worshipVolume * 100]}
-                                max={100}
-                                step={1}
-                                onValueChange={(val) => setWorshipVolume(val[0] / 100)}
-                                className="cursor-pointer"
-                            />
+                        {/* Honest Embed Disclaimer (Audit finding) */}
+                        <div className="p-2.5 rounded-xl bg-black/40 border border-gray-800 text-[11px] text-gray-400 flex items-start gap-2">
+                            <Info className="w-3.5 h-3.5 text-[#D4AF37] shrink-0 mt-0.5" />
+                            <span>
+                                External playlist embeds (Spotify / YouTube) control volume within their player widget due to browser sandbox security.
+                            </span>
                         </div>
 
                         {/* Playlist Embed / Mobile Link */}
@@ -306,7 +557,7 @@ export function LeviteMixer() {
                                 />
                             </div>
 
-                            {/* Mobile "Open in Spotify" button (PDF spec) */}
+                            {/* Mobile "Open in Spotify" button */}
                             <div className="md:hidden">
                                 <a
                                     href="https://open.spotify.com/playlist/37i9dQZF1DX4sWSpwq3LiO"
@@ -342,6 +593,7 @@ export function LeviteMixer() {
                                             if (customUrlInput.trim()) {
                                                 setPlaylistUrl(customUrlInput.trim());
                                                 setShowUrlEditor(false);
+                                                toast.success("Updated worship stream URL");
                                             }
                                         }}
                                         className="text-xs h-7 bg-[#D4AF37] text-black hover:bg-[#b5952f]"
@@ -360,7 +612,7 @@ export function LeviteMixer() {
 
             </div>
 
-            {/* SESSION TIMER & FADE OUT AT END (PDF SPEC) */}
+            {/* SESSION TIMER & FADE OUT AT END */}
             <div className="p-4 rounded-2xl bg-[#141418] border border-gray-800 flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">

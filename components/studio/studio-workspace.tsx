@@ -50,6 +50,7 @@ export function StudioWorkspace({
     // Modals
     const [showPreachMode, setShowPreachMode] = useState(false);
     const [showFaithfulnessModal, setShowFaithfulnessModal] = useState(false);
+    const [faithfulnessStats, setFaithfulnessStats] = useState<{ verified: number; total: number } | null>(null);
     const [showIllustrationModal, setShowIllustrationModal] = useState(false);
 
     // Auth & Gate
@@ -99,6 +100,7 @@ export function StudioWorkspace({
                 onOpenChange={setShowFaithfulnessModal}
                 scripture={data.scripture}
                 notesHtml={data.notes}
+                onVerificationUpdate={(verified, total) => setFaithfulnessStats({ verified, total })}
             />
 
             {/* Illustration Assistant Dialog */}
@@ -141,14 +143,27 @@ export function StudioWorkspace({
                         </div>
                     </div>
 
-                    {/* Faithfulness Badge */}
+                    {/* Dynamic Faithfulness Badge */}
                     <button
                         onClick={() => setShowFaithfulnessModal(true)}
-                        className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 transition-colors text-xs font-mono"
+                        className={cn(
+                            "hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono transition-colors border",
+                            !faithfulnessStats || faithfulnessStats.total === 0
+                                ? "bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20"
+                                : faithfulnessStats.verified === faithfulnessStats.total
+                                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20"
+                                    : "bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20"
+                        )}
                         title="Open Faithfulness Check"
                     >
                         <ShieldCheck className="w-3.5 h-3.5" />
-                        <span>4/4 verified</span>
+                        <span>
+                            {!faithfulnessStats
+                                ? "Faithfulness check"
+                                : faithfulnessStats.total === 0
+                                    ? "0 citations"
+                                    : `${faithfulnessStats.verified}/${faithfulnessStats.total} verified`}
+                        </span>
                     </button>
                 </div>
 

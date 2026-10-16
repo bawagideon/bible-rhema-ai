@@ -625,6 +625,9 @@ async function runSecurityAndRagTests() {
                 console.log("  ✅ Live Supabase PostgREST verified: anonymous clients are denied access to mutating RPCs.");
                 passed++;
             } catch (networkErr) {
+                if (networkErr.name === 'AssertionError' || networkErr.code === 'ERR_ASSERTION') {
+                    throw networkErr;
+                }
                 console.log(`  ⏭️ [SKIPPED] Live Supabase instance not reachable in this test environment (${networkErr.message}).`);
                 skipped++;
             }

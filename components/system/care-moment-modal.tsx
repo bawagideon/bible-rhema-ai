@@ -36,17 +36,25 @@ export function CareMomentModal({ open, onOpenChange }: CareMomentModalProps) {
                     <div className="p-3 rounded-xl bg-[#1a1a1e] border border-gray-800 space-y-1">
                         <div className="flex items-center justify-between text-xs">
                             <span className="font-semibold text-white">Nigeria National Emergency</span>
-                            <span className="text-[#D4AF37] font-mono font-bold">112 / 199</span>
+                            <span className="text-[#D4AF37] font-mono font-bold">112</span>
                         </div>
-                        <p className="text-[11px] text-gray-400">Toll-free 24/7 immediate assistance</p>
+                        <p className="text-[11px] text-gray-400">Toll-free 24/7 emergency dispatch (Police, Ambulance, Fire)</p>
                     </div>
 
                     <div className="p-3 rounded-xl bg-[#1a1a1e] border border-gray-800 space-y-1">
                         <div className="flex items-center justify-between text-xs">
-                            <span className="font-semibold text-white">Mental Health & Suicide Lifeline</span>
-                            <span className="text-[#D4AF37] font-mono font-bold">0806 210 6493</span>
+                            <span className="font-semibold text-white">MANI Crisis Helpline</span>
+                            <span className="text-[#D4AF37] font-mono font-bold">0809 111 6264</span>
                         </div>
-                        <p className="text-[11px] text-gray-400">Nigeria crisis counseling helpline</p>
+                        <p className="text-[11px] text-gray-400">Mentally Aware Nigeria Initiative (24/7 confidential support)</p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-[#1a1a1e] border border-gray-800 space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                            <span className="font-semibold text-white">Lagos State Lifeline</span>
+                            <span className="text-[#D4AF37] font-mono font-bold">0800 800 2000</span>
+                        </div>
+                        <p className="text-[11px] text-gray-400">Lagos State Mental Health Crisis Support (Toll-Free)</p>
                     </div>
                 </div>
 

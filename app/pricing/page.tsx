@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Shield, Zap, CornerDownLeft, Sparkles, ArrowRight, CreditCard, Loader2, AlertCircle, CheckCircle2, MessageCircle } from "lucide-react";
+import { Check, Shield, Zap, CornerDownLeft, Sparkles, ArrowRight, CreditCard, Loader2, AlertCircle, CheckCircle2, MessageCircle, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -402,11 +402,11 @@ export default function PricingPage() {
 
                             <Button
                                 variant="outline"
-                                onClick={() => window.open('https://wa.me/2348000000000?text=Hello%20Rhema%20Support,%20I%20had%20an%20issue%20with%20my%20payment', '_blank')}
+                                onClick={() => window.open('mailto:support@biblerhema.ai?subject=Payment%20Assistance%20Request', '_blank')}
                                 className="w-full border-gray-800 text-gray-300 hover:text-white text-xs gap-2"
                             >
-                                <MessageCircle className="w-4 h-4 text-emerald-400" />
-                                Contact support on WhatsApp
+                                <Mail className="w-4 h-4 text-[#D4AF37]" />
+                                Contact Support (support@biblerhema.ai)
                             </Button>
                         </div>
                     </div>

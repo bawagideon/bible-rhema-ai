@@ -104,10 +104,69 @@ Built around three distinct rooms:
 
 ## 5. Security & Verification Status
 
-- [x] **Zero Mock Data**: Hardcoded 12-day streaks and placeholder cards replaced with authentic Supabase queries.
-- [x] **Database Fresh State**: All tables verified at 0 records for fresh user sign-in testing.
-- [x] **Privilege Escalation Closed**: Deprecated unverified `/api/billing/verify` route (HTTP 410).
-- [x] **Server-Side Tier Gating**: Sermon Studio generation restricted to `MINISTER` tier via server-side session checks.
-- [x] **Clerk Webhook Tier Preservation**: User update events no longer reset paid users to `SEEKER`.
-- [x] **Row-Level Security Hardened**: Phase 3 SQL migration eliminates anonymous access bypasses across all tables.
-- [x] **Crisis Intervention Safeguard**: Pastoral safety detection for despair or self-harm triggers compassionate care and verified hotlines.
+- [x] **Zero Mock Data**: Hardcoded streaks and placeholder cards replaced with authentic Supabase queries.
+- [x] **Database Fresh State**: All tables verified for fresh user sign-in testing.
+- [x] **Privilege Escalation Closed**: Deprecated unverified routes (HTTP 410) and restricted RPCs to `service_role`.
+- [x] **Server-Side Tier Gating**: Sermon Studio generation and PDF exports restricted to `MINISTER` tier via server-side session checks.
+- [x] **Clerk Webhook Tier Preservation**: User update events preserve existing paid membership tiers.
+- [x] **Row-Level Security Hardened**: PostgreSQL row-level security and RPC execution guards enforce author privacy and prevent unauthorized mutations.
+- [x] **Crisis Intervention Safeguard**: Pastoral safety detection for despair or self-harm triggers compassionate care with verified Nigerian hotlines (112, MANI 0809 111 6264, Lagos State 0800 800 2000).
+
+---
+
+## 6. The 17-Screen Design Canvas Catalog
+
+The application UI implements the 17 core screens adhering to the Obsidian Night (`#0A0A0B` / `#121214`), Divine Gold (`#D4AF37`), and crisp contrast design system:
+
+| Screen # | Screen Title | Route / Component | Primary User Capabilities |
+| :--- | :--- | :--- | :--- |
+| **Screen 1** | **Today / Rhema Dashboard** | `app/page.tsx` | Daily Rhema devotional, streak tracker, recent journal entries, saved studies carousel, quick-launch pads. |
+| **Screen 2** | **SpiritOS Theological Studio** | `app/spirit-os/page.tsx` | Hermeneutic AI exegesis, interactive prompt suggestions, dynamic Living Context Panel with original Greek/Hebrew lexicons. |
+| **Screen 3** | **Sanctuary & Levite Mixer** | `app/sanctuary/page.tsx` | 3-Fader audio engine: procedural synthesizer (432Hz), Web Speech Scripture narration with live ducking, and external worship stream embed. |
+| **Screen 4** | **The Altar: My Petitions** | `app/altar/page.tsx` (Tab 1) | Secret Place prayer journal, 7-day prayer rhythm tracker, Scripture promise anchors, answered prayer testimonies. |
+| **Screen 5** | **The Altar: Community Wall** | `app/altar/page.tsx` (Tab 2) | Intercessory prayer wall, anonymous/masked author badges, one-click intercession ("I prayed for this"), community reporting, author unpublish controls. |
+| **Screen 6** | **The Altar: New Petition Sheet** | `app/altar/page.tsx` (Dialog) | Petition composer with explicit opt-in checkbox and legal consent confirmation before public wall placement. |
+| **Screen 7** | **Library & Spiritual Archives** | `app/library/page.tsx` | Unified repository for personal spiritual artifacts: journal reflections, saved studies, sermon manuscripts, and text search. |
+| **Screen 8** | **Covenant Membership & Plans** | `app/pricing/page.tsx` | Tier matrix (Seeker ₦0, Disciple ₦5,000/mo, Minister ₦15,000/mo) with monthly/yearly toggle (17% savings) and Paystack billing. |
+| **Screen 9** | **Checkout States 1 & 2** | `app/pricing/page.tsx` (Modals) | Verifying payment with Paystack loader; Payment Success celebration with immediate tier unlocking and direct navigation. |
+| **Screen 10** | **Checkout States 3 & 4** | `app/pricing/page.tsx` (Modals) | Payment Failed with retry button and verified support contact (`support@biblerhema.ai`); Already Subscribed status screen. |
+| **Screen 11** | **Sermon Studio: Workspace** | `components/studio/studio-workspace.tsx` | 3-column workstation: Scripture anchor, live word count, speaking time calculator (130 wpm), dynamic faithfulness check badge, expository editor. |
+| **Screen 12** | **Sermon Studio: Sermons Home** | `app/studio/page.tsx` | Sermon archive, Sunday delivery countdown, new sermon creation form, and manuscript management. |
+| **Screen 13** | **Sermon Studio: Seeker Preview** | `components/studio/upgrade-dialog.tsx` | Graceful feature lock screen for free users showcasing Minister tier capabilities. |
+| **Screen 14** | **Sermon Studio: Preach Mode** | `components/studio/preach-mode-modal.tsx` | Fullscreen teleprompter for the pulpit: auto-scroll with adjustable speed, live elapsed timer, high-contrast dark room mode. |
+| **Screen 15** | **Onboarding Assessment** | `app/onboarding/page.tsx` | Spiritual intake survey capturing goals, translation preference, and personal spiritual focus. |
+| **Screen 16** | **Profile & Preferences** | `app/settings/page.tsx` | Account management, preferred Bible translation, prayer notification preferences, and active tier credentials. |
+| **Screen 17** | **System Board & Modal Suite** | `components/system/*` | Loading skeletons, empty states, error boundary, offline indicators, delete confirmation dialogs, daily limit modal, and Care Moment crisis modal. |
+
+---
+
+## 7. Technical Integrations & Integrity Roadmap
+
+### 1. Scripture First Resolution & Faithfulness Engine
+- **Current State**: Real-time reference extraction from manuscripts and titles using canonical book regex. Each extracted passage is resolved live via `/api/bible`, cross-checked against API.Bible (American Bible Society) and the offline canonical index. Results display the exact biblical text, verified translation attribution, and dynamic workspace badge (`X/Y verified`).
+- **Roadmap**: Add automated semantic cross-referencing and verse drift alerts when sermon points deviate from the cited text's context.
+
+### 2. Levite Audio Engine & Voice Narration
+- **Current State**: 
+  - Fader 1: Procedural Web Audio API soundscapes (Soaking Pad, Rainfall pink-noise, Still Waters modulated noise) with 432Hz harmonic key selection.
+  - Fader 2: Real client-side Web Speech API Scripture narration (Psalms 23, 46, 91, John 15, Romans 8) with volume control and procedural ducking (lowering pad to 35% during speech).
+  - Fader 3: External playlist embed (Spotify / YouTube) with clear labeling of browser sandbox volume isolation and saved mix presets.
+- **Roadmap**: Integrate Bible Brain API (Faith Comes By Hearing) for high-fidelity dramatized multi-voice audio with background caching.
+
+### 3. Community Prayer Privacy & Moderation Guardrails
+- **Current State**: 
+  - All `/api/prayers` endpoints require Clerk authentication (blocking anonymous web scraping).
+  - New petitions default strictly to private Secret Place (`is_community: false`). Public wall publication requires explicit affirmative consent.
+  - Community feed masks `user_id` to prevent user tracking while providing `is_author` boolean flag.
+  - Authors can unpublish their petition at any time back to private storage.
+  - Any community member can report inappropriate content (`action: report`), triggering immediate unpublishing for moderation review.
+  - Verified crisis numbers: Nigeria National Emergency (`112`), Mentally Aware Nigeria Initiative (`0809 111 6264`), Lagos State Lifeline (`0800 800 2000`).
+
+### 4. Billing, Quotas & RLS Privilege Isolation
+- **Current State**:
+  - Payment transactions are fulfilled exclusively through verified Paystack webhooks or verified server-side callbacks with exact amount and currency checking.
+  - Sensitive RPC functions (`fulfill_subscription_payment`, `increment_prayer_intercession`, `reserve_query_quota`) are restricted to `service_role` execution.
+  - SpiritOS daily study quota uses row-locked atomic reservations (`reserve_query_quota`) that fail closed on any database disruption.
+  - Edge Functions enforce RS256 public key verification against pinned Clerk issuer domains and strict CORS origin allowlists.
+  - Sermon generation and manuscript PDF export are strictly gated to the `MINISTER` subscription tier.
+
