@@ -84,6 +84,38 @@ export async function POST(req: NextRequest) {
                 break;
             }
 
+            case "invoice.payment_failed": {
+                const customerCode = data?.customer?.customer_code;
+                const subCode = data?.subscription?.subscription_code || data?.subscription_code;
+                if (subCode || customerCode) {
+                    const updates = {
+                        subscription_status: 'past_due',
+                        updated_at: new Date().toISOString()
+                    };
+                    if (subCode) {
+                        await supabase.from('profiles').update(updates).eq('paystack_subscription_code', subCode);
+                    } else if (customerCode) {
+                        await supabase.from('profiles').update(updates).eq('paystack_customer_code', customerCode);
+                    }
+                }
+                break;
+            }
+
+            case "refund.processed": {
+                const customerCode = data?.customer?.customer_code;
+                if (customerCode) {
+                    await supabase
+                        .from('profiles')
+                        .update({
+                            tier: 'SEEKER',
+                            subscription_status: 'cancelled',
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('paystack_customer_code', customerCode);
+                }
+                break;
+            }
+
             default:
                 console.log(`[PAYSTACK WEBHOOK] Unhandled event: ${event}`);
                 break;

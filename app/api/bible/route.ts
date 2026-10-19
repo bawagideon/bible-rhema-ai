@@ -1,27 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveScripturePassage } from "@/lib/bible/api-bible";
-import { scriptureRateLimiter } from "@/lib/rate-limit";
+import { scriptureRateLimiter, extractClientIp } from "@/lib/rate-limit";
 
 export const dynamic = 'force-dynamic';
 
-function getClientIp(req: NextRequest): string {
-    const forwarded = req.headers.get("x-forwarded-for");
-    if (forwarded) {
-        const parts = forwarded.split(",");
-        if (parts[0] && parts[0].trim()) {
-            return parts[0].trim();
-        }
-    }
-    const realIp = req.headers.get("x-real-ip");
-    if (realIp && realIp.trim()) {
-        return realIp.trim();
-    }
-    return "127.0.0.1";
-}
 
 export async function GET(req: NextRequest) {
     try {
-        const clientIp = getClientIp(req);
+        const clientIp = extractClientIp(req);
         if (scriptureRateLimiter.isRateLimited(clientIp)) {
             return NextResponse.json({
                 success: false,

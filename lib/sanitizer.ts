@@ -1,6 +1,7 @@
 /**
  * BIBLE RHEMA AI - HTML SANITIZATION UTILITY
  * Allowlist-based DOMParser HTML sanitization preventing XSS execution in manuscript previews.
+ * Supports native browser DOMParser as well as JSDOM parser injection for deterministic server-side/test verification.
  */
 export const ALLOWED_TAGS = new Set([
     'p', 'span', 'b', 'i', 'strong', 'em', 'u', 's', 'strike',
@@ -11,11 +12,20 @@ export const ALLOWED_TAGS = new Set([
 
 export const ALLOWED_ATTRS = new Set(['class', 'title', 'target', 'rel']);
 
-export function sanitizeManuscriptHtml(html: string): string {
+export interface SanitizeOptions {
+    domParser?: any;
+    forceFallback?: boolean;
+}
+
+export function sanitizeManuscriptHtml(html: string, options?: SanitizeOptions): string {
     if (!html || typeof html !== 'string') return '';
 
-    if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
-        // Fallback for non-browser/SSR environments
+    const parserConstructor = options?.forceFallback
+        ? undefined
+        : (options?.domParser || (typeof DOMParser !== 'undefined' ? DOMParser : undefined));
+
+    if (!parserConstructor) {
+        // Fallback for non-browser/SSR environments where no DOM is mounted
         return html
             .replace(/<script\b[\s\S]*?<\/script>/gi, '')
             .replace(/<iframe\b[\s\S]*?<\/iframe>/gi, '')
@@ -25,18 +35,21 @@ export function sanitizeManuscriptHtml(html: string): string {
             .replace(/<math\b[\s\S]*?(?:<\/math>|\/?>)/gi, '')
             .replace(/<style\b[\s\S]*?<\/style>/gi, '')
             .replace(/\s*on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-            .replace(/(href|src)\s*=\s*(?:"javascript:[^"]*"|'javascript:[^']*'|javascript:[^\s>]*)/gi, '');
+            .replace(/(href|src)\s*=\s*(?:"javascript:[^"]*"|'javascript:[^']*'|javascript:[^\s>]*)/gi, '')
+            .replace(/(href|src)\s*=\s*(?:"data:[^"]*"|'data:[^']*'|data:[^\s>]*)/gi, '')
+            .replace(/(href|src)\s*=\s*(?:"vbscript:[^"]*"|'vbscript:[^']*'|vbscript:[^\s>]*)/gi, '');
     }
 
-    const parser = new DOMParser();
+    const parser = new parserConstructor();
     const doc = parser.parseFromString(html, 'text/html');
+    const nodeTypeElement = typeof Node !== 'undefined' ? Node.ELEMENT_NODE : 1;
 
-    function cleanNode(node: Node) {
-        const children = Array.from(node.childNodes);
-        for (const child of children) {
-            if (child.nodeType === Node.ELEMENT_NODE) {
-                const el = child as HTMLElement;
-                const tagName = el.tagName.toLowerCase();
+    function cleanNode(node: any) {
+        const children = Array.from(node.childNodes || []);
+        for (const child of children as any[]) {
+            if (child.nodeType === nodeTypeElement) {
+                const el = child;
+                const tagName = (el.tagName || '').toLowerCase();
 
                 // If not in allowed tags, remove element and active vectors completely
                 if (!ALLOWED_TAGS.has(tagName)) {
@@ -45,7 +58,7 @@ export function sanitizeManuscriptHtml(html: string): string {
                 }
 
                 // Sanitize attributes
-                const attrNames = Array.from(el.attributes).map(a => a.name);
+                const attrNames = Array.from(el.attributes || []).map((a: any) => a.name);
                 for (const name of attrNames) {
                     const lowerName = name.toLowerCase();
                     if (lowerName.startsWith('on')) {

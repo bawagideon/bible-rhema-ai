@@ -129,12 +129,18 @@ export async function verifyPaystackTransaction(reference: string): Promise<Pays
 }
 
 /**
- * Verify Paystack webhook HMAC signature
+ * Verify Paystack webhook HMAC SHA-512 signature using constant-time comparison
  */
-export function verifyPaystackSignature(bodyRaw: string, signature: string): boolean {
-    const secret = getPaystackSecretKey();
+export function verifyPaystackSignature(bodyRaw: string, signature: string, secretOverride?: string): boolean {
+    const secret = secretOverride || getPaystackSecretKey();
     if (!secret || !signature) return false;
 
-    const hash = crypto.createHmac("sha512", secret).update(bodyRaw).digest("hex");
-    return hash === signature;
+    try {
+        const hash = crypto.createHmac("sha512", secret).update(bodyRaw).digest("hex");
+        if (hash.length !== signature.length) return false;
+        return crypto.timingSafeEqual(Buffer.from(hash, 'utf-8'), Buffer.from(signature, 'utf-8'));
+    } catch {
+        return false;
+    }
 }
+

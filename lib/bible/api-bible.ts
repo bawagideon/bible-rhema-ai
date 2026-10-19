@@ -57,80 +57,15 @@ export function normalizeTranslationCode(nameOrCode: string | undefined): string
     return clean;
 }
 
-/**
- * Canonical chapter limits for all 66 books of the Holy Bible.
- * Ensures references to non-existent chapters (e.g. Obadiah 2, Jude 2, Psalm 151) fail canonical validation.
- */
-export const CANONICAL_BOOK_CHAPTERS: Record<string, number> = {
-    // Old Testament (39 books)
-    'genesis': 50,
-    'exodus': 40,
-    'leviticus': 27,
-    'numbers': 36,
-    'deuteronomy': 34,
-    'joshua': 24,
-    'judges': 21,
-    'ruth': 4,
-    '1 samuel': 31,
-    '2 samuel': 24,
-    '1 kings': 22,
-    '2 kings': 25,
-    '1 chronicles': 29,
-    '2 chronicles': 36,
-    'ezra': 10,
-    'nehemiah': 13,
-    'esther': 10,
-    'job': 42,
-    'psalm': 150,
-    'proverbs': 31,
-    'ecclesiastes': 12,
-    'song of solomon': 8,
-    'isaiah': 66,
-    'jeremiah': 52,
-    'lamentations': 5,
-    'ezekiel': 48,
-    'daniel': 12,
-    'hosea': 14,
-    'joel': 3,
-    'amos': 9,
-    'obadiah': 1,
-    'jonah': 4,
-    'micah': 7,
-    'nahum': 3,
-    'habakkuk': 3,
-    'zephaniah': 3,
-    'haggai': 2,
-    'zechariah': 14,
-    'malachi': 4,
-    // New Testament (27 books)
-    'matthew': 28,
-    'mark': 16,
-    'luke': 24,
-    'john': 21,
-    'acts': 28,
-    'romans': 16,
-    '1 corinthians': 16,
-    '2 corinthians': 13,
-    'galatians': 6,
-    'ephesians': 6,
-    'philippians': 4,
-    'colossians': 4,
-    '1 thessalonians': 5,
-    '2 thessalonians': 3,
-    '1 timothy': 6,
-    '2 timothy': 4,
-    'titus': 3,
-    'philemon': 1,
-    'hebrews': 13,
-    'james': 5,
-    '1 peter': 5,
-    '2 peter': 3,
-    '1 john': 5,
-    '2 john': 1,
-    '3 john': 1,
-    'jude': 1,
-    'revelation': 22
-};
+export {
+    CANONICAL_BOOK_CHAPTERS,
+    CANONICAL_CHAPTER_VERSE_COUNTS,
+    getMaxCanonicalVerse
+} from './canonical-data.ts';
+import { CANONICAL_BOOK_CHAPTERS, getMaxCanonicalVerse } from './canonical-data.ts';
+
+export const ESV_COPYRIGHT_NOTICE = "Scripture quotations are from the ESV® Bible (The Holy Bible, English Standard Version®), copyright © 2001 by Crossway, a publishing ministry of Good News Publishers. Used by permission. All rights reserved.";
+export const WEB_PUBLIC_DOMAIN_NOTICE = "World English Bible (WEB) is in the Public Domain worldwide.";
 
 /**
  * Verifies that a list of returned verse numbers contains every single verse
@@ -240,19 +175,22 @@ export function parseScriptureRef(ref: string): ParsedScriptureRef | null {
     // Canonical chapter bounds: chapter must be > 0 and <= max chapters in that book
     if (isNaN(chapter) || chapter <= 0 || chapter > maxChapters) return null;
 
+    const maxVerses = getMaxCanonicalVerse(book, chapter);
+    if (maxVerses === null) return null;
+
     let startVerse: number | undefined;
     let endVerse: number | undefined;
 
     if (m[3]) {
         startVerse = parseInt(m[3], 10);
-        // Logical bounds: verse must be > 0 and <= 176 (Psalm 119 has 176 verses)
-        if (isNaN(startVerse) || startVerse <= 0 || startVerse > 176) return null;
+        // Canonical bounds: verse must be > 0 and <= maxVerses in this individual chapter
+        if (isNaN(startVerse) || startVerse <= 0 || startVerse > maxVerses) return null;
         endVerse = startVerse;
     }
 
     if (m[4]) {
         endVerse = parseInt(m[4], 10);
-        if (isNaN(endVerse) || endVerse <= 0 || endVerse > 176) return null;
+        if (isNaN(endVerse) || endVerse <= 0 || endVerse > maxVerses) return null;
         // Logical bounds: endVerse cannot be less than startVerse (reject reversed ranges like 17-16)
         if (startVerse !== undefined && endVerse < startVerse) return null;
     }
@@ -571,14 +509,18 @@ export async function resolveScripturePassage(
                     const normActual = normalizeTranslationCode(data.translation_name || "WEB");
                     const isMismatch = normReq !== normActual;
 
-                    // Verify that returned book and chapter match requested book and chapter
-                    let isRangeCovered = false;
+                    // Strict Provider Reference Identity Verification:
+                    // Returned reference MUST parse and MUST match the requested canonical book and chapter!
                     const returnedRefParsed = parseScriptureRef(data.reference || '');
-                    const bookAndChapterMatch = returnedRefParsed
-                        ? (returnedRefParsed.book === parsedReq.book && returnedRefParsed.chapter === parsedReq.chapter)
-                        : true;
+                    if (!returnedRefParsed) {
+                        return null; // Unparseable provider reference rejected!
+                    }
+                    if (returnedRefParsed.book !== parsedReq.book || returnedRefParsed.chapter !== parsedReq.chapter) {
+                        return null; // Book or chapter mismatch rejected!
+                    }
 
-                    if (bookAndChapterMatch && Array.isArray(data.verses) && data.verses.length > 0) {
+                    let isRangeCovered = false;
+                    if (Array.isArray(data.verses) && data.verses.length > 0) {
                         const verseNums = data.verses
                             .map((v: any) => typeof v.verse === 'number' ? v.verse : parseInt(v.verse, 10))
                             .filter((n: number) => !isNaN(n));
@@ -644,27 +586,50 @@ export async function resolveScripturePassage(
                         let allVersesMatchPassage = true;
 
                         for (const v of verses) {
-                            const rawId = v.reference || v.id || '';
-                            const vMatch = rawId.match(/(\d+)$/);
-                            if (vMatch) {
-                                verseNums.push(parseInt(vMatch[1], 10));
-                            }
+                            let verseNum: number | undefined;
+                            let matchesPassage = false;
+
                             if (v.reference) {
                                 const vRefParsed = parseScriptureRef(v.reference);
-                                if (vRefParsed && (vRefParsed.book !== parsedReq.book || vRefParsed.chapter !== parsedReq.chapter)) {
-                                    allVersesMatchPassage = false;
+                                if (vRefParsed && vRefParsed.book === parsedReq.book && vRefParsed.chapter === parsedReq.chapter) {
+                                    matchesPassage = true;
+                                    verseNum = vRefParsed.startVerse;
                                 }
+                            }
+
+                            if (!matchesPassage && typeof v.id === 'string') {
+                                const parts = v.id.split('.');
+                                if (parts.length >= 3) {
+                                    const cNum = parseInt(parts[1], 10);
+                                    const vNum = parseInt(parts[2], 10);
+                                    if (cNum === parsedReq.chapter && !isNaN(vNum)) {
+                                        const parsedIdRef = parseScriptureRef(`${parts[0]} ${cNum}:${vNum}`);
+                                        if (parsedIdRef && parsedIdRef.book === parsedReq.book) {
+                                            matchesPassage = true;
+                                            verseNum = vNum;
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (!matchesPassage || verseNum === undefined) {
+                                allVersesMatchPassage = false;
+                            } else {
+                                verseNums.push(verseNum);
                             }
                         }
 
-                        if (allVersesMatchPassage && verseNums.length > 0) {
-                            if (parsedReq.startVerse !== undefined && parsedReq.endVerse !== undefined) {
-                                isRangeCovered = verifyContiguousVerseRange(verseNums, parsedReq.startVerse, parsedReq.endVerse);
-                            } else if (parsedReq.startVerse !== undefined) {
-                                isRangeCovered = verseNums.includes(parsedReq.startVerse);
-                            } else {
-                                isRangeCovered = true;
-                            }
+                        // If any verse does not match the requested book and chapter, reject!
+                        if (!allVersesMatchPassage || verseNums.length === 0) {
+                            return null;
+                        }
+
+                        if (parsedReq.startVerse !== undefined && parsedReq.endVerse !== undefined) {
+                            isRangeCovered = verifyContiguousVerseRange(verseNums, parsedReq.startVerse, parsedReq.endVerse);
+                        } else if (parsedReq.startVerse !== undefined) {
+                            isRangeCovered = verseNums.includes(parsedReq.startVerse);
+                        } else {
+                            isRangeCovered = true;
                         }
 
                         return {
