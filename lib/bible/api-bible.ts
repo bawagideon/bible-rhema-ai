@@ -450,12 +450,14 @@ export function extractAllScriptureReferences(text: string): string[] {
 export interface ResolveScriptureOptions {
     customFetch?: typeof fetch;
     timeoutMs?: number;
+    forcePublicDomain?: boolean;
 }
 
 /**
  * Fetch verified Scripture passage with exact normalized reference matching,
  * verse-range validation, and truthful translation attribution.
  * Never suppresses translation mismatches or marks unproven ranges as covered.
+ * Supports explicit public-domain-only routing to eliminate copyright liability.
  */
 export async function resolveScripturePassage(
     reference: string,
@@ -465,15 +467,17 @@ export async function resolveScripturePassage(
     const cleanRef = reference.trim();
     if (!cleanRef || cleanRef.length > 100) return null;
 
+    const isPublicDomainEnforced = Boolean(options.forcePublicDomain || process.env.NEXT_PUBLIC_PUBLIC_DOMAIN_ONLY === 'true');
     const normReq = normalizeTranslationCode(requestedVersion);
+    const targetQueryTrans = (isPublicDomainEnforced && normReq === "ESV") ? "WEB" : normReq;
     const parsedReq = parseScriptureRef(cleanRef);
     if (!parsedReq) return null;
 
     const fetchFn = options.customFetch || fetch;
     const timeoutMs = options.timeoutMs || 8000;
 
-    // 1. If the requested version is ESV, check the canonical cache first with EXACT normalized matching
-    if (normReq === "ESV") {
+    // 1. If the requested version is ESV (and public-domain-only mode is not enforced), check the canonical cache first
+    if (normReq === "ESV" && !isPublicDomainEnforced) {
         const cached = CANONICAL_SCRIPTURE_CACHE[parsedReq.normalized];
         if (cached) {
             return {
@@ -493,7 +497,7 @@ export async function resolveScripturePassage(
 
     // 2. Query open public domain Scripture resolver (bible-api.com) for requested translation
     try {
-        const transParam = normReq === 'KJV' ? '?translation=kjv' : '';
+        const transParam = targetQueryTrans === 'KJV' ? '?translation=kjv' : '';
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -562,7 +566,7 @@ export async function resolveScripturePassage(
     const apiKey = process.env.API_BIBLE_KEY || process.env.BIBLE_API_KEY;
     if (apiKey && apiKey !== "placeholder-api-bible-key") {
         try {
-            const bibleId = BIBLE_IDS[normReq] || BIBLE_IDS.WEB;
+            const bibleId = BIBLE_IDS[targetQueryTrans] || BIBLE_IDS.WEB;
             const controller = new AbortController();
             const timer = setTimeout(() => controller.abort(), timeoutMs);
 

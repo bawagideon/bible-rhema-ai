@@ -77,6 +77,48 @@ export function verifyUserTierEntitlement(
 
     const status = profile.subscription_status.toLowerCase().trim();
     const activeStatuses = ['active', 'trialing'];
+    const now = Date.now();
+
+    // Past due, refunded, or inactive subscriptions are immediately denied
+    if (status === 'past_due' || status === 'refunded' || status === 'unpaid') {
+        return {
+            isEntitled: false,
+            authorizedTier: 'SEEKER',
+            effectiveStatus: 'inactive',
+            reason: `Covenant membership is currently '${profile.subscription_status}'. An active subscription is required.`
+        };
+    }
+
+    // For cancelled subscriptions (auto-renew turned off), check if user is still within their paid-through period
+    if (status === 'cancelled') {
+        if (!profile.current_period_end) {
+            return {
+                isEntitled: false,
+                authorizedTier: 'SEEKER',
+                effectiveStatus: 'inactive',
+                reason: 'Subscription was cancelled and no active billing period exists.'
+            };
+        }
+
+        const periodEndTime = new Date(profile.current_period_end).getTime();
+        if (isNaN(periodEndTime) || periodEndTime <= now) {
+            return {
+                isEntitled: false,
+                authorizedTier: 'SEEKER',
+                effectiveStatus: 'expired',
+                reason: `Subscription auto-renewal was cancelled and paid period expired on ${new Date(periodEndTime || 0).toISOString().split('T')[0]}.`
+            };
+        }
+
+        // User is entitled until the paid-through date
+        return {
+            isEntitled: true,
+            authorizedTier: currentTier,
+            effectiveStatus: 'active',
+            reason: `Subscription auto-renewal is cancelled, but covenant access remains active through paid period end.`
+        };
+    }
+
     if (!activeStatuses.includes(status)) {
         return {
             isEntitled: false,
@@ -86,7 +128,7 @@ export function verifyUserTierEntitlement(
         };
     }
 
-    // For paid tiers, require a valid, future billing period expiration date
+    // For active/trialing paid tiers, require a valid, future billing period expiration date
     if (!profile.current_period_end) {
         return {
             isEntitled: false,
@@ -106,7 +148,7 @@ export function verifyUserTierEntitlement(
         };
     }
 
-    if (periodEndTime < Date.now()) {
+    if (periodEndTime < now) {
         return {
             isEntitled: false,
             authorizedTier: 'SEEKER',

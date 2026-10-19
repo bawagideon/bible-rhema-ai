@@ -1,89 +1,126 @@
 /**
- * BIBLE RHEMA AI - HTML SANITIZATION UTILITY
- * Allowlist-based DOMParser HTML sanitization preventing XSS execution in manuscript previews.
- * Supports native browser DOMParser as well as JSDOM parser injection for deterministic server-side/test verification.
+ * BIBLE RHEMA AI - UNIFIED ALLOWLIST HTML SANITIZER
+ * Enforces identical strict allowlist security guarantees across browser, Node SSR,
+ * and background tasks using DOMPurify backed by JSDOM.
+ * Prevents stored XSS, script injection, malformed entity bypasses, and SVG/MathML payloads.
  */
-export const ALLOWED_TAGS = new Set([
+import createDOMPurify from 'dompurify';
+
+export const ALLOWED_TAGS = [
     'p', 'span', 'b', 'i', 'strong', 'em', 'u', 's', 'strike',
     'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
     'blockquote', 'ul', 'ol', 'li', 'br', 'hr', 'sub', 'sup',
     'table', 'thead', 'tbody', 'tr', 'th', 'td', 'a'
-]);
+];
 
-export const ALLOWED_ATTRS = new Set(['class', 'title', 'target', 'rel']);
+export const ALLOWED_ATTRS = ['class', 'title', 'target', 'rel', 'href'];
 
 export interface SanitizeOptions {
     domParser?: any;
+    forceServerSanitizer?: boolean;
     forceFallback?: boolean;
 }
 
+// Cached server-side DOMPurify instance
+let cachedServerPurify: any = null;
+
+function loadServerJSDOM(): any {
+    if (typeof window !== 'undefined') return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((globalThis as any).JSDOM) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (globalThis as any).JSDOM;
+    }
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (typeof (globalThis as any).__non_webpack_require__ !== 'undefined') {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const jsdomModule = (globalThis as any).__non_webpack_require__('jsdom');
+            return jsdomModule.JSDOM || jsdomModule;
+        }
+        if (typeof require !== 'undefined') {
+            const jsdomModule = require('jsdom');
+            return jsdomModule.JSDOM || jsdomModule;
+        }
+    } catch {
+        return null;
+    }
+    return null;
+}
+
+function initializePurifyInstance(win: any): any {
+    const purify = createDOMPurify(win);
+
+    // Defense-in-depth hook on attributes to strictly control <a> tags and sanitize links
+    purify.addHook('afterSanitizeAttributes', (node: any) => {
+        if (node && node.tagName === 'A') {
+            const rawHref = node.getAttribute('href') || '';
+            // Strip control chars, null bytes, and whitespace before evaluating scheme
+            const sanitizedHref = rawHref.replace(/[\x00-\x20\s]/g, '').toLowerCase();
+
+            if (
+                sanitizedHref.startsWith('javascript:') ||
+                sanitizedHref.startsWith('data:') ||
+                sanitizedHref.startsWith('vbscript:') ||
+                sanitizedHref.includes('&#') // Obfuscated HTML entities in href scheme
+            ) {
+                node.removeAttribute('href');
+            } else {
+                node.setAttribute('rel', 'noopener noreferrer');
+            }
+        }
+    });
+
+    return purify;
+}
+
+function getServerPurify(): any {
+    if (!cachedServerPurify) {
+        const JSDOMClass = loadServerJSDOM();
+        if (!JSDOMClass) {
+            throw new Error("JSDOM is unavailable in this environment for server-side sanitization");
+        }
+        const dom = new JSDOMClass('<!DOCTYPE html>');
+        cachedServerPurify = initializePurifyInstance(dom.window);
+    }
+    return cachedServerPurify;
+}
+
+/**
+ * Universal HTML sanitizer enforcing an identical tag/attribute allowlist across client and server.
+ * Eliminates parser differentials and replaces brittle regex fallbacks with DOMPurify.
+ */
 export function sanitizeManuscriptHtml(html: string, options?: SanitizeOptions): string {
     if (!html || typeof html !== 'string') return '';
 
-    const parserConstructor = options?.forceFallback
-        ? undefined
-        : (options?.domParser || (typeof DOMParser !== 'undefined' ? DOMParser : undefined));
+    let purify: any;
 
-    if (!parserConstructor) {
-        // Fallback for non-browser/SSR environments where no DOM is mounted
-        return html
-            .replace(/<script\b[\s\S]*?<\/script>/gi, '')
-            .replace(/<iframe\b[\s\S]*?<\/iframe>/gi, '')
-            .replace(/<object\b[\s\S]*?<\/object>/gi, '')
-            .replace(/<embed\b[\s\S]*?(?:<\/embed>|\/?>)/gi, '')
-            .replace(/<svg\b[\s\S]*?(?:<\/svg>|\/?>)/gi, '')
-            .replace(/<math\b[\s\S]*?(?:<\/math>|\/?>)/gi, '')
-            .replace(/<style\b[\s\S]*?<\/style>/gi, '')
-            .replace(/\s*on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-            .replace(/(href|src)\s*=\s*(?:"javascript:[^"]*"|'javascript:[^']*'|javascript:[^\s>]*)/gi, '')
-            .replace(/(href|src)\s*=\s*(?:"data:[^"]*"|'data:[^']*'|data:[^\s>]*)/gi, '')
-            .replace(/(href|src)\s*=\s*(?:"vbscript:[^"]*"|'vbscript:[^']*'|vbscript:[^\s>]*)/gi, '');
+    if (typeof window !== 'undefined' && window.document && !options?.forceServerSanitizer && !options?.forceFallback) {
+        purify = initializePurifyInstance(window);
+    } else if (options?.domParser) {
+        const JSDOMClass = loadServerJSDOM();
+        const win = options.domParser.window || (typeof options.domParser === 'object' && options.domParser.document ? options.domParser : (JSDOMClass ? new JSDOMClass('').window : null));
+        purify = win ? initializePurifyInstance(win) : getServerPurify();
+    } else {
+        purify = getServerPurify();
     }
 
-    const parser = new parserConstructor();
-    const doc = parser.parseFromString(html, 'text/html');
-    const nodeTypeElement = typeof Node !== 'undefined' ? Node.ELEMENT_NODE : 1;
-
-    function cleanNode(node: any) {
-        const children = Array.from(node.childNodes || []);
-        for (const child of children as any[]) {
-            if (child.nodeType === nodeTypeElement) {
-                const el = child;
-                const tagName = (el.tagName || '').toLowerCase();
-
-                // If not in allowed tags, remove element and active vectors completely
-                if (!ALLOWED_TAGS.has(tagName)) {
-                    el.remove();
-                    continue;
-                }
-
-                // Sanitize attributes
-                const attrNames = Array.from(el.attributes || []).map((a: any) => a.name);
-                for (const name of attrNames) {
-                    const lowerName = name.toLowerCase();
-                    if (lowerName.startsWith('on')) {
-                        el.removeAttribute(name);
-                        continue;
-                    }
-
-                    if (tagName === 'a' && lowerName === 'href') {
-                        const val = el.getAttribute(name)?.trim().toLowerCase() || '';
-                        if (val.startsWith('javascript:') || val.startsWith('data:') || val.startsWith('vbscript:')) {
-                            el.removeAttribute(name);
-                        }
-                        continue;
-                    }
-
-                    if (!ALLOWED_ATTRS.has(lowerName)) {
-                        el.removeAttribute(name);
-                    }
-                }
-
-                cleanNode(el);
-            }
-        }
-    }
-
-    cleanNode(doc.body);
-    return doc.body.innerHTML;
+    return purify.sanitize(html, {
+        ALLOWED_TAGS,
+        ALLOWED_ATTR: ALLOWED_ATTRS,
+        ALLOW_DATA_ATTR: false,
+        FORBID_TAGS: [
+            'script', 'style', 'iframe', 'object', 'embed', 'svg', 'math',
+            'base', 'meta', 'link', 'form', 'input', 'button', 'template',
+            'textarea', 'select', 'option', 'marquee', 'applet', 'frame', 'frameset'
+        ],
+        FORBID_ATTR: [
+            'style', 'onerror', 'onload', 'onclick', 'onmouseover',
+            'onfocus', 'onblur', 'onkeydown', 'onkeypress', 'onkeyup'
+        ],
+        KEEP_CONTENT: true,
+        RETURN_DOM: false,
+        RETURN_DOM_FRAGMENT: false,
+        FORCE_BODY: true
+    });
 }

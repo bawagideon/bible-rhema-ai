@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveScripturePassage } from "@/lib/bible/api-bible";
-import { scriptureRateLimiter, extractClientIp } from "@/lib/rate-limit";
+import { checkDistributedRateLimit, extractClientIp } from "@/lib/rate-limit";
 
 export const dynamic = 'force-dynamic';
 
@@ -8,13 +8,19 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
     try {
         const clientIp = extractClientIp(req);
-        if (scriptureRateLimiter.isRateLimited(clientIp)) {
+        const rateLimit = await checkDistributedRateLimit(clientIp, { windowMs: 60 * 1000, maxRequests: 60 });
+        if (!rateLimit.allowed) {
             return NextResponse.json({
                 success: false,
                 error: "Rate limit exceeded. Maximum 60 scripture resolution requests per minute permitted."
             }, {
                 status: 429,
-                headers: { 'Retry-After': '60' }
+                headers: {
+                    'Retry-After': String(rateLimit.retryAfterSeconds),
+                    'X-RateLimit-Limit': '60',
+                    'X-RateLimit-Remaining': String(rateLimit.remaining),
+                    'X-RateLimit-Reset': String(Math.ceil(rateLimit.resetAt / 1000))
+                }
             });
         }
 
