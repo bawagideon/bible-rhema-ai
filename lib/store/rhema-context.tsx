@@ -33,7 +33,6 @@ interface RhemaContextType {
     userTier: UserRole;
     userName: string;
     userAvatar: string;
-    toggleRole: () => void;
     refreshProfile: () => Promise<void>;
     isRightPanelOpen: boolean;
     toggleRightPanel: () => void;
@@ -103,14 +102,6 @@ export function RhemaProvider({ children }: { children: ReactNode }) {
         fetchProfile();
     }, [fetchProfile]);
 
-    const toggleRole = () => {
-        setUserRole(prev => {
-            if (prev === 'MINISTER') return 'DISCIPLE';
-            if (prev === 'DISCIPLE') return 'SEEKER';
-            return 'MINISTER';
-        });
-    };
-
     const toggleRightPanel = () => setIsRightPanelOpen(prev => !prev);
     const triggerPdfExport = () => setPdfExportTimestamp(Date.now());
     const triggerSaveComplete = () => setLastSavedTimestamp(Date.now());
@@ -128,7 +119,6 @@ export function RhemaProvider({ children }: { children: ReactNode }) {
             userTier,
             userName,
             userAvatar,
-            toggleRole,
             refreshProfile: fetchProfile,
             isRightPanelOpen,
             toggleRightPanel,

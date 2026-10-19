@@ -10,7 +10,7 @@ import { extractAllScriptureReferences } from "@/lib/bible/api-bible";
 export interface VerifiedReference {
     ref: string;
     normalizedRef?: string;
-    status: 'verified' | 'partial' | 'translation-mismatch' | 'unverified' | 'error' | 'pending';
+    status: 'verified' | 'partial' | 'translation-mismatch' | 'excerpt' | 'unverified' | 'error' | 'pending';
     translation?: string;
     requestedTranslation?: string;
     isTranslationMismatch?: boolean;
@@ -19,6 +19,7 @@ export interface VerifiedReference {
     error?: string;
     verseRangeCovered?: boolean;
     isExcerpt?: boolean;
+    quotationCompleteness?: 'full' | 'excerpt';
     attributionNote?: string;
 }
 
@@ -78,15 +79,18 @@ export function FaithfulnessCheckModal({
                         if (res.ok) {
                             const json = await res.json();
                             if (json.success && json.data) {
-                                const isRangeCovered = json.data.verseRangeCovered !== false;
+                                const isRangeCovered = json.data.verseRangeCovered === true;
                                 const isMismatch = Boolean(json.data.isTranslationMismatch);
+                                const isExcerpt = Boolean(json.data.isExcerpt) || json.data.quotationCompleteness === 'excerpt';
 
-                                let status: 'verified' | 'partial' | 'translation-mismatch' | 'unverified' = 'verified';
+                                let status: 'verified' | 'partial' | 'translation-mismatch' | 'excerpt' | 'unverified' = 'unverified';
                                 if (!isRangeCovered) {
                                     status = 'partial';
                                 } else if (isMismatch) {
                                     status = 'translation-mismatch';
-                                } else {
+                                } else if (isExcerpt) {
+                                    status = 'excerpt';
+                                } else if (isRangeCovered && !isMismatch && !isExcerpt) {
                                     status = 'verified';
                                 }
 
@@ -101,6 +105,7 @@ export function FaithfulnessCheckModal({
                                     source: json.data.source,
                                     verseRangeCovered: isRangeCovered,
                                     isExcerpt: json.data.isExcerpt,
+                                    quotationCompleteness: json.data.quotationCompleteness,
                                     attributionNote: json.data.attributionNote
                                 };
                             }
@@ -138,10 +143,11 @@ export function FaithfulnessCheckModal({
     const verifiedCount = results.filter(r => r.status === 'verified').length;
     const partialCount = results.filter(r => r.status === 'partial').length;
     const mismatchCount = results.filter(r => r.status === 'translation-mismatch').length;
+    const excerptCount = results.filter(r => r.status === 'excerpt').length;
     const unresolvedCount = results.filter(r => r.status === 'unverified' || r.status === 'error').length;
     const totalCount = results.length;
     const allVerified = totalCount > 0 && verifiedCount === totalCount;
-    const hasUnresolved = unresolvedCount > 0 || partialCount > 0;
+    const hasUnresolved = unresolvedCount > 0 || partialCount > 0 || excerptCount > 0;
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -177,6 +183,11 @@ export function FaithfulnessCheckModal({
                                     {mismatchCount > 0 && (
                                         <Badge className="bg-blue-500/15 text-blue-400 border border-blue-500/30 text-[11px]">
                                             {mismatchCount} translation note
+                                        </Badge>
+                                    )}
+                                    {excerptCount > 0 && (
+                                        <Badge className="bg-purple-500/15 text-purple-400 border border-purple-500/30 text-[11px]">
+                                            {excerptCount} excerpt only
                                         </Badge>
                                     )}
                                     {unresolvedCount > 0 && (
@@ -247,6 +258,12 @@ export function FaithfulnessCheckModal({
                                         <Badge className="bg-blue-500/10 text-blue-400 border-0 text-[10px] font-mono">
                                             <Info className="w-3 h-3 mr-1" />
                                             Translation Note ({item.translation}; req. {item.requestedTranslation || 'ESV'})
+                                        </Badge>
+                                    )}
+                                    {item.status === 'excerpt' && (
+                                        <Badge className="bg-purple-500/10 text-purple-400 border-0 text-[10px] font-mono">
+                                            <Info className="w-3 h-3 mr-1" />
+                                            Excerpt Only ({item.translation || 'ESV'})
                                         </Badge>
                                     )}
                                     {(item.status === 'unverified' || item.status === 'error') && (

@@ -65,31 +65,54 @@ export function verifyUserTierEntitlement(
         };
     }
 
-    // Subscription status check (cancelled, expired, unpaid, past_due)
-    if (profile.subscription_status) {
-        const status = profile.subscription_status.toLowerCase().trim();
-        const inactiveStatuses = ['cancelled', 'expired', 'past_due', 'unpaid', 'inactive'];
-        if (inactiveStatuses.includes(status)) {
-            return {
-                isEntitled: false,
-                authorizedTier: 'SEEKER',
-                effectiveStatus: 'inactive',
-                reason: `Covenant membership is currently '${profile.subscription_status}'. An active subscription is required.`
-            };
-        }
+    // For paid tiers (DISCIPLE, MINISTER), require explicit active subscription status
+    if (!profile.subscription_status) {
+        return {
+            isEntitled: false,
+            authorizedTier: 'SEEKER',
+            effectiveStatus: 'inactive',
+            reason: `An active subscription status is required to access ${requiredTier} covenant features.`
+        };
     }
 
-    // Billing period expiration check
-    if (profile.current_period_end) {
-        const periodEndTime = new Date(profile.current_period_end).getTime();
-        if (!isNaN(periodEndTime) && periodEndTime < Date.now()) {
-            return {
-                isEntitled: false,
-                authorizedTier: 'SEEKER',
-                effectiveStatus: 'expired',
-                reason: `Covenant membership period expired on ${new Date(periodEndTime).toISOString().split('T')[0]}. Please renew to continue.`
-            };
-        }
+    const status = profile.subscription_status.toLowerCase().trim();
+    const activeStatuses = ['active', 'trialing'];
+    if (!activeStatuses.includes(status)) {
+        return {
+            isEntitled: false,
+            authorizedTier: 'SEEKER',
+            effectiveStatus: 'inactive',
+            reason: `Covenant membership is currently '${profile.subscription_status}'. An active subscription is required.`
+        };
+    }
+
+    // For paid tiers, require a valid, future billing period expiration date
+    if (!profile.current_period_end) {
+        return {
+            isEntitled: false,
+            authorizedTier: 'SEEKER',
+            effectiveStatus: 'expired',
+            reason: `A valid, active billing cycle is required to verify ${requiredTier} covenant access.`
+        };
+    }
+
+    const periodEndTime = new Date(profile.current_period_end).getTime();
+    if (isNaN(periodEndTime)) {
+        return {
+            isEntitled: false,
+            authorizedTier: 'SEEKER',
+            effectiveStatus: 'expired',
+            reason: `Invalid billing period expiration date in profile.`
+        };
+    }
+
+    if (periodEndTime < Date.now()) {
+        return {
+            isEntitled: false,
+            authorizedTier: 'SEEKER',
+            effectiveStatus: 'expired',
+            reason: `Covenant membership period expired on ${new Date(periodEndTime).toISOString().split('T')[0]}. Please renew to continue.`
+        };
     }
 
     return {

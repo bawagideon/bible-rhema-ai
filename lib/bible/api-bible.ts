@@ -58,8 +58,107 @@ export function normalizeTranslationCode(nameOrCode: string | undefined): string
 }
 
 /**
+ * Canonical chapter limits for all 66 books of the Holy Bible.
+ * Ensures references to non-existent chapters (e.g. Obadiah 2, Jude 2, Psalm 151) fail canonical validation.
+ */
+export const CANONICAL_BOOK_CHAPTERS: Record<string, number> = {
+    // Old Testament (39 books)
+    'genesis': 50,
+    'exodus': 40,
+    'leviticus': 27,
+    'numbers': 36,
+    'deuteronomy': 34,
+    'joshua': 24,
+    'judges': 21,
+    'ruth': 4,
+    '1 samuel': 31,
+    '2 samuel': 24,
+    '1 kings': 22,
+    '2 kings': 25,
+    '1 chronicles': 29,
+    '2 chronicles': 36,
+    'ezra': 10,
+    'nehemiah': 13,
+    'esther': 10,
+    'job': 42,
+    'psalm': 150,
+    'proverbs': 31,
+    'ecclesiastes': 12,
+    'song of solomon': 8,
+    'isaiah': 66,
+    'jeremiah': 52,
+    'lamentations': 5,
+    'ezekiel': 48,
+    'daniel': 12,
+    'hosea': 14,
+    'joel': 3,
+    'amos': 9,
+    'obadiah': 1,
+    'jonah': 4,
+    'micah': 7,
+    'nahum': 3,
+    'habakkuk': 3,
+    'zephaniah': 3,
+    'haggai': 2,
+    'zechariah': 14,
+    'malachi': 4,
+    // New Testament (27 books)
+    'matthew': 28,
+    'mark': 16,
+    'luke': 24,
+    'john': 21,
+    'acts': 28,
+    'romans': 16,
+    '1 corinthians': 16,
+    '2 corinthians': 13,
+    'galatians': 6,
+    'ephesians': 6,
+    'philippians': 4,
+    'colossians': 4,
+    '1 thessalonians': 5,
+    '2 thessalonians': 3,
+    '1 timothy': 6,
+    '2 timothy': 4,
+    'titus': 3,
+    'philemon': 1,
+    'hebrews': 13,
+    'james': 5,
+    '1 peter': 5,
+    '2 peter': 3,
+    '1 john': 5,
+    '2 john': 1,
+    '3 john': 1,
+    'jude': 1,
+    'revelation': 22
+};
+
+/**
+ * Verifies that a list of returned verse numbers contains every single verse
+ * in the requested range [startVerse..endVerse] without any gaps or missing interior verses.
+ */
+export function verifyContiguousVerseRange(
+    returnedVerseNumbers: number[],
+    startVerse?: number,
+    endVerse?: number
+): boolean {
+    if (startVerse === undefined || endVerse === undefined) {
+        return false;
+    }
+    if (startVerse > endVerse) {
+        return false;
+    }
+    const verseSet = new Set(returnedVerseNumbers);
+    for (let v = startVerse; v <= endVerse; v++) {
+        if (!verseSet.has(v)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
  * Normalizes a scripture reference string into structured book, chapter, and verse boundaries.
- * Enforces exact book aliases, bounds checking (rejecting 0, negative, and reversed ranges),
+ * Enforces exact book aliases, canonical chapter limits, bounds checking (rejecting 0, negative, and reversed ranges),
  * and sensible length limits to eliminate false-positives.
  */
 export function parseScriptureRef(ref: string): ParsedScriptureRef | null {
@@ -93,6 +192,14 @@ export function parseScriptureRef(ref: string): ParsedScriptureRef | null {
         'lam': 'lamentations',
         'ezek': 'ezekiel',
         'dan': 'daniel',
+        'hos': 'hosea',
+        'obad': 'obadiah',
+        'mic': 'micah',
+        'hab': 'habakkuk',
+        'zeph': 'zephaniah',
+        'hag': 'haggai',
+        'zech': 'zechariah',
+        'mal': 'malachi',
         'matt': 'matthew',
         'mt': 'matthew',
         'mk': 'mark',
@@ -118,15 +225,20 @@ export function parseScriptureRef(ref: string): ParsedScriptureRef | null {
         '1 jn': '1 john',
         '2 jn': '2 john',
         '3 jn': '3 john',
+        'jud': 'jude',
         'rev': 'revelation'
     };
     if (bookMap[book]) {
         book = bookMap[book];
     }
 
+    // Must be a recognized canonical Bible book
+    const maxChapters = CANONICAL_BOOK_CHAPTERS[book];
+    if (maxChapters === undefined) return null;
+
     const chapter = parseInt(m[2], 10);
-    // Logical bounds: chapter must be > 0 and <= 150 (Psalms has 150 chapters)
-    if (isNaN(chapter) || chapter <= 0 || chapter > 150) return null;
+    // Canonical chapter bounds: chapter must be > 0 and <= max chapters in that book
+    if (isNaN(chapter) || chapter <= 0 || chapter > maxChapters) return null;
 
     let startVerse: number | undefined;
     let endVerse: number | undefined;
@@ -459,16 +571,24 @@ export async function resolveScripturePassage(
                     const normActual = normalizeTranslationCode(data.translation_name || "WEB");
                     const isMismatch = normReq !== normActual;
 
-                    // Verify verse coverage if a specific range was requested
-                    let isRangeCovered = true;
-                    if (parsedReq.isRange && Array.isArray(data.verses) && data.verses.length > 0) {
-                        const firstV = data.verses[0]?.verse;
-                        const lastV = data.verses[data.verses.length - 1]?.verse;
+                    // Verify that returned book and chapter match requested book and chapter
+                    let isRangeCovered = false;
+                    const returnedRefParsed = parseScriptureRef(data.reference || '');
+                    const bookAndChapterMatch = returnedRefParsed
+                        ? (returnedRefParsed.book === parsedReq.book && returnedRefParsed.chapter === parsedReq.chapter)
+                        : true;
+
+                    if (bookAndChapterMatch && Array.isArray(data.verses) && data.verses.length > 0) {
+                        const verseNums = data.verses
+                            .map((v: any) => typeof v.verse === 'number' ? v.verse : parseInt(v.verse, 10))
+                            .filter((n: number) => !isNaN(n));
+
                         if (parsedReq.startVerse !== undefined && parsedReq.endVerse !== undefined) {
-                            isRangeCovered = (firstV !== undefined && lastV !== undefined) &&
-                                             (firstV <= parsedReq.startVerse && lastV >= parsedReq.endVerse);
+                            isRangeCovered = verifyContiguousVerseRange(verseNums, parsedReq.startVerse, parsedReq.endVerse);
+                        } else if (parsedReq.startVerse !== undefined) {
+                            isRangeCovered = verseNums.includes(parsedReq.startVerse);
                         } else {
-                            isRangeCovered = false;
+                            isRangeCovered = true;
                         }
                     }
 
@@ -482,7 +602,7 @@ export async function resolveScripturePassage(
                         source: 'open-bible',
                         verseRangeCovered: isRangeCovered,
                         isExcerpt: false,
-                        quotationCompleteness: 'full',
+                        quotationCompleteness: isRangeCovered ? 'full' : 'excerpt',
                         attributionNote: isMismatch
                             ? `Quoted in ${normActual} (Public Domain); requested ${normReq}.`
                             : undefined
@@ -519,20 +639,31 @@ export async function resolveScripturePassage(
                         const actualTranslation = normalizeTranslationCode(BIBLE_IDS[normReq] ? normReq : "WEB");
                         const isMismatch = normReq !== actualTranslation;
 
-                        // Validate range coverage from returned verse items
-                        let isRangeCovered = true;
-                        if (parsedReq.isRange && parsedReq.startVerse !== undefined && parsedReq.endVerse !== undefined) {
-                            const verseNums = verses.map((v: any) => {
-                                const vMatch = (v.reference || v.id || '').match(/(\d+)$/);
-                                return vMatch ? parseInt(vMatch[1], 10) : null;
-                            }).filter((n: number | null): n is number => n !== null);
+                        let isRangeCovered = false;
+                        const verseNums: number[] = [];
+                        let allVersesMatchPassage = true;
 
-                            if (verseNums.length > 0) {
-                                const minV = Math.min(...verseNums);
-                                const maxV = Math.max(...verseNums);
-                                isRangeCovered = minV <= parsedReq.startVerse && maxV >= parsedReq.endVerse;
+                        for (const v of verses) {
+                            const rawId = v.reference || v.id || '';
+                            const vMatch = rawId.match(/(\d+)$/);
+                            if (vMatch) {
+                                verseNums.push(parseInt(vMatch[1], 10));
+                            }
+                            if (v.reference) {
+                                const vRefParsed = parseScriptureRef(v.reference);
+                                if (vRefParsed && (vRefParsed.book !== parsedReq.book || vRefParsed.chapter !== parsedReq.chapter)) {
+                                    allVersesMatchPassage = false;
+                                }
+                            }
+                        }
+
+                        if (allVersesMatchPassage && verseNums.length > 0) {
+                            if (parsedReq.startVerse !== undefined && parsedReq.endVerse !== undefined) {
+                                isRangeCovered = verifyContiguousVerseRange(verseNums, parsedReq.startVerse, parsedReq.endVerse);
+                            } else if (parsedReq.startVerse !== undefined) {
+                                isRangeCovered = verseNums.includes(parsedReq.startVerse);
                             } else {
-                                isRangeCovered = false;
+                                isRangeCovered = true;
                             }
                         }
 
@@ -546,7 +677,7 @@ export async function resolveScripturePassage(
                             source: 'api.bible',
                             verseRangeCovered: isRangeCovered,
                             isExcerpt: false,
-                            quotationCompleteness: 'full',
+                            quotationCompleteness: isRangeCovered ? 'full' : 'excerpt',
                             attributionNote: isMismatch
                                 ? `Quoted from ${actualTranslation} via API.Bible; requested ${normReq}.`
                                 : undefined

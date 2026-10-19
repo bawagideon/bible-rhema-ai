@@ -123,6 +123,23 @@ export function validatePrayerUpdate(body: any): ValidationResult {
 }
 
 /**
+ * Validates prayer report reason input.
+ * Rejects non-string types and lengths > 500 characters.
+ */
+export function validatePrayerReportReason(reason: any): ValidationResult {
+    if (reason === undefined || reason === null) {
+        return { isValid: true };
+    }
+    if (typeof reason !== 'string') {
+        return { isValid: false, error: "Report reason must be a text string." };
+    }
+    if (reason.trim().length > 500) {
+        return { isValid: false, error: "Report reason cannot exceed 500 characters." };
+    }
+    return { isValid: true };
+}
+
+/**
  * Validates report submission against a target prayer.
  * Prevents reporting private prayers or author self-reporting.
  */
@@ -143,13 +160,9 @@ export function validatePrayerReport(
         return { isValid: false, error: "You cannot report your own petition. Use 'Make Private' to unpublish it." };
     }
 
-    if (reason !== undefined && reason !== null) {
-        if (typeof reason !== 'string') {
-            return { isValid: false, error: "Report reason must be a text string." };
-        }
-        if (reason.trim().length > 500) {
-            return { isValid: false, error: "Report reason cannot exceed 500 characters." };
-        }
+    const reasonValidation = validatePrayerReportReason(reason);
+    if (!reasonValidation.isValid) {
+        return reasonValidation;
     }
 
     return { isValid: true };

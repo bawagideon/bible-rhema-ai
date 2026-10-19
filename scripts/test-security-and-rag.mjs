@@ -4,9 +4,11 @@ import crypto from 'node:crypto';
 import { searchTopicalConcordance } from '../lib/bible/topical-concordance.ts';
 import { validateGroundedCitations, retrieveStudyEvidence } from '../lib/ai/gemini.ts';
 import { fulfillPaymentTransaction } from '../lib/billing/fulfillment.ts';
-import { parseScriptureRef, resolveScripturePassage, normalizeTranslationCode } from '../lib/bible/api-bible.ts';
-import { validatePrayerCreate, validatePrayerUpdate, validatePrayerReport } from '../lib/prayers/moderation.ts';
+import { parseScriptureRef, resolveScripturePassage, normalizeTranslationCode, verifyContiguousVerseRange, CANONICAL_BOOK_CHAPTERS } from '../lib/bible/api-bible.ts';
+import { validatePrayerCreate, validatePrayerUpdate, validatePrayerReport, validatePrayerReportReason } from '../lib/prayers/moderation.ts';
 import { verifyUserTierEntitlement } from '../lib/billing/entitlements.ts';
+import { sanitizeManuscriptHtml } from '../lib/sanitizer.ts';
+import { SlidingWindowRateLimiter } from '../lib/rate-limit.ts';
 
 async function runSecurityAndRagTests() {
     console.log("🛡️ Running Bible Rhema AI - Security, RAG & Billing Hardening Test Suite...\n");
@@ -583,9 +585,23 @@ async function runSecurityAndRagTests() {
             /FORBIDDEN/,
             "Authenticated client calling reserve_query_quota directly must throw FORBIDDEN"
         );
+        assert.throws(
+            () => executeSecureRpc({ role: 'authenticated', jwtClaimRole: 'authenticated' }, 'report_community_prayer'),
+            /FORBIDDEN/,
+            "Authenticated client calling report_community_prayer directly must throw FORBIDDEN"
+        );
+        assert.throws(
+            () => executeSecureRpc({ role: 'anon', jwtClaimRole: 'anon' }, 'report_community_prayer'),
+            /FORBIDDEN/,
+            "Anonymous client calling report_community_prayer directly must throw FORBIDDEN"
+        );
         assert.doesNotThrow(
             () => executeSecureRpc({ role: 'service_role', jwtClaimRole: 'service_role' }, 'increment_prayer_intercession'),
             "Service role client must execute successfully"
+        );
+        assert.doesNotThrow(
+            () => executeSecureRpc({ role: 'service_role', jwtClaimRole: 'service_role' }, 'report_community_prayer'),
+            "Service role client calling report_community_prayer must execute successfully"
         );
 
         console.log("  ✅ SQL specification verified: definer owner isolation and RPC execution guards are algebraically sound.");
@@ -828,23 +844,77 @@ async function runSecurityAndRagTests() {
         assert.ok(colossians.text.includes("created through him and for him"), "Must contain middle of verse 16");
         assert.ok(colossians.text.includes("in him all things hold together"), "Must contain verse 17 text");
 
-        // Scenario 10: Graceful network timeout / abort handling via customFetch
+        // Scenario 10: Graceful network timeout / abort handling via customFetch with real signal listening
+        let signalAborted = false;
         /** @type {typeof fetch} */
         // @ts-ignore
-        const mockFetchHanging = async () => new Promise((_, reject) => {
-            setTimeout(() => {
-                const err = new Error("The operation was aborted");
-                err.name = "AbortError";
-                reject(err);
-            }, 20);
+        const mockFetchHanging = async (url, options) => new Promise((resolve, reject) => {
+            if (options?.signal) {
+                if (options.signal.aborted) {
+                    signalAborted = true;
+                    const err = new Error("The operation was aborted");
+                    err.name = "AbortError";
+                    return reject(err);
+                }
+                options.signal.addEventListener('abort', () => {
+                    signalAborted = true;
+                    const err = new Error("The operation was aborted");
+                    err.name = "AbortError";
+                    reject(err);
+                });
+            }
         });
         const timeoutRes = await resolveScripturePassage("Habakkuk 3:17-19", "ESV", {
             customFetch: mockFetchHanging,
-            timeoutMs: 25
+            timeoutMs: 30
         });
         assert.equal(timeoutRes, null, "Scenario 10: Aborted network fetch must gracefully return null without throwing");
+        assert.equal(signalAborted, true, "Scenario 10: Abort signal listener must have triggered from timeoutMs cancellation");
 
-        console.log("  ✅ Exact scripture integrity verified across 10 deterministic scenarios (caching, ranges, aliases, normalization, unabridged text, and network fault tolerance).");
+        // Scenario 11: Contiguous verse range gap detection & canonical chapter bounds
+        assert.equal(verifyContiguousVerseRange([1, 2, 3], 1, 3), true, "Contiguous range 1..3 must pass");
+        assert.equal(verifyContiguousVerseRange([1, 3], 1, 3), false, "Missing interior verse 2 must fail contiguous check");
+        assert.equal(verifyContiguousVerseRange([2, 3], 1, 3), false, "Missing start verse 1 must fail contiguous check");
+        assert.equal(verifyContiguousVerseRange([1, 2], 1, 3), false, "Missing end verse 3 must fail contiguous check");
+        assert.equal(verifyContiguousVerseRange([], 1, 1), false, "Empty verse array must fail");
+
+        // Provider returning interior verse gaps (e.g. verses 1 and 3 present, 2 omitted)
+        /** @type {typeof fetch} */
+        // @ts-ignore
+        const mockFetchGappedRange = async () => ({
+            ok: true,
+            json: async () => ({
+                reference: "Genesis 1:1-3",
+                verses: [
+                    { verse: 1, text: "In the beginning..." },
+                    { verse: 3, text: "And God said, Let there be light..." }
+                ],
+                text: "In the beginning... And God said, Let there be light...",
+                translation_name: "World English Bible"
+            })
+        });
+        const gappedRes = await resolveScripturePassage("Genesis 1:1-3", "WEB", { customFetch: mockFetchGappedRange });
+        assert.ok(gappedRes, "Gapped response resolves");
+        assert.equal(gappedRes.verseRangeCovered, false, "Interior gap in verses must result in verseRangeCovered: false");
+        assert.equal(gappedRes.quotationCompleteness, 'excerpt');
+
+        // Exact canonical chapter limits
+        assert.equal(CANONICAL_BOOK_CHAPTERS['obadiah'], 1);
+        assert.equal(CANONICAL_BOOK_CHAPTERS['jude'], 1);
+        assert.equal(CANONICAL_BOOK_CHAPTERS['philemon'], 1);
+        assert.equal(CANONICAL_BOOK_CHAPTERS['2 john'], 1);
+        assert.equal(CANONICAL_BOOK_CHAPTERS['3 john'], 1);
+        assert.equal(CANONICAL_BOOK_CHAPTERS['psalm'], 150);
+
+        assert.ok(parseScriptureRef("Obadiah 1:1"), "Obadiah chapter 1 must parse");
+        assert.ok(parseScriptureRef("Jude 1:5"), "Jude chapter 1 must parse");
+        assert.equal(parseScriptureRef("Obadiah 2:1"), null, "Obadiah 2:1 exceeds canonical bound, must return null");
+        assert.equal(parseScriptureRef("Jude 2:5"), null, "Jude 2:5 exceeds canonical bound, must return null");
+        assert.equal(parseScriptureRef("Philemon 2:1"), null, "Philemon 2:1 exceeds canonical bound, must return null");
+        assert.equal(parseScriptureRef("2 John 2:1"), null, "2 John 2:1 exceeds canonical bound, must return null");
+        assert.equal(parseScriptureRef("3 John 2:1"), null, "3 John 2:1 exceeds canonical bound, must return null");
+
+        console.log("  ✅ Exact scripture integrity verified across 11 deterministic scenarios (caching, ranges, contiguous verification, chapter boundaries, aliases, normalization, unabridged text, and signal cancellation).");
         passed++;
         unitPassed++;
     } catch (e) {
@@ -967,7 +1037,17 @@ async function runSecurityAndRagTests() {
         assert.equal(excessiveReason.isValid, false);
         assert.match(excessiveReason.error, /cannot exceed 500 characters/);
 
-        console.log("  ✅ Production prayer moderation logic verified: affirmative consent enforced on POST & PATCH, self-reporting prevented, private petitions protected.");
+        // Case N: validatePrayerReportReason boundary tests (non-strings, null/undefined safety, length bounds)
+        assert.equal(validatePrayerReportReason(undefined).isValid, true, "undefined reason defaults safely");
+        assert.equal(validatePrayerReportReason(null).isValid, true, "null reason defaults safely");
+        assert.equal(validatePrayerReportReason("Valid report reason").isValid, true);
+        assert.equal(validatePrayerReportReason(12345).isValid, false, "Numeric reason must be rejected");
+        assert.equal(validatePrayerReportReason({ inject: "bad" }).isValid, false, "Object reason must be rejected");
+        assert.equal(validatePrayerReportReason(true).isValid, false, "Boolean reason must be rejected");
+        assert.equal(validatePrayerReportReason("R".repeat(500)).isValid, true, "500 chars passes");
+        assert.equal(validatePrayerReportReason("R".repeat(501)).isValid, false, "501 chars fails");
+
+        console.log("  ✅ Production prayer moderation logic verified: affirmative consent enforced on POST & PATCH, self-reporting prevented, reason boundary strictly enforced.");
         passed++;
         unitPassed++;
     } catch (e) {
@@ -1049,7 +1129,31 @@ async function runSecurityAndRagTests() {
         assert.equal(freeAccessRes.isEntitled, true);
         assert.equal(freeAccessRes.effectiveStatus, 'active');
 
-        console.log("  ✅ Production entitlement engine strictly gates features: tier hierarchy, subscription status, and billing expiry dates are fully enforced.");
+        // Case I: Minister tier with missing / undefined subscription_status (must fail closed)
+        const ministerMissingStatus = { id: 'user-minister-no-status', tier: 'MINISTER' };
+        const resMissingStatus = verifyUserTierEntitlement(ministerMissingStatus, 'MINISTER');
+        assert.equal(resMissingStatus.isEntitled, false, "Missing subscription_status must fail closed");
+        assert.equal(resMissingStatus.effectiveStatus, 'inactive');
+
+        // Case J: Minister tier with active status but missing current_period_end (must fail closed)
+        const ministerMissingPeriod = { id: 'user-minister-no-period', tier: 'MINISTER', subscription_status: 'active' };
+        const resMissingPeriod = verifyUserTierEntitlement(ministerMissingPeriod, 'MINISTER');
+        assert.equal(resMissingPeriod.isEntitled, false, "Missing current_period_end must fail closed");
+        assert.equal(resMissingPeriod.effectiveStatus, 'expired');
+
+        // Case K: Minister tier with invalid/malformed date (must fail closed)
+        const ministerBadDate = { id: 'user-minister-bad-date', tier: 'MINISTER', subscription_status: 'active', current_period_end: 'invalid-date' };
+        const resBadDate = verifyUserTierEntitlement(ministerBadDate, 'MINISTER');
+        assert.equal(resBadDate.isEntitled, false, "Malformed current_period_end must fail closed");
+        assert.equal(resBadDate.effectiveStatus, 'expired');
+
+        // Case L: Disciple tier with missing subscription_status (must fail closed)
+        const discipleMissingStatus = { id: 'user-disciple-no-status', tier: 'DISCIPLE' };
+        const resDiscipleMissing = verifyUserTierEntitlement(discipleMissingStatus, 'DISCIPLE');
+        assert.equal(resDiscipleMissing.isEntitled, false, "Disciple missing subscription_status must fail closed");
+        assert.equal(resDiscipleMissing.effectiveStatus, 'inactive');
+
+        console.log("  ✅ Production entitlement engine strictly gates features: tier hierarchy, subscription status, missing-field fail-closed safety, and billing expiry dates are fully enforced.");
         passed++;
         unitPassed++;
     } catch (e) {
@@ -1058,20 +1162,83 @@ async function runSecurityAndRagTests() {
         unitFailed++;
     }
 
+    // =========================================================================
+    // TEST SUITE 12: XSS HTML SANITIZATION & SLIDING-WINDOW RATE LIMITING
+    // =========================================================================
+    console.log("\n▶ [DEFENSE-IN-DEPTH] Test 12: Manuscript HTML Sanitization & Sliding-Window Rate Limiting Engine");
+    try {
+        // --- 1. HTML Sanitization Tests ---
+        const maliciousHtml = `
+            <h1>The Gospel According to John</h1>
+            <p>In the beginning was the Word.</p>
+            <script>alert('pwned')</script>
+            <iframe src="https://attacker.com/steal"></iframe>
+            <object data="malware.swf"></object>
+            <embed src="exploit.pdf">
+            <svg onload="alert('svg-xss')"><circle r="10"/></svg>
+            <math><mtext>test</mtext></math>
+            <p onclick="alert('click')">Click here</p>
+            <a href="javascript:alert('link-xss')">Dangerous link</a>
+            <a href="https://example.com" title="Safe link">Safe link</a>
+        `;
+
+        const sanitized = sanitizeManuscriptHtml(maliciousHtml);
+
+        assert.ok(!sanitized.includes('<script'), "Script tags must be stripped");
+        assert.ok(!sanitized.includes('alert('), "Active JS execution vectors must be stripped");
+        assert.ok(!sanitized.includes('<iframe'), "Iframe tags must be stripped");
+        assert.ok(!sanitized.includes('<object'), "Object tags must be stripped");
+        assert.ok(!sanitized.includes('<embed'), "Embed tags must be stripped");
+        assert.ok(!sanitized.includes('<svg'), "SVG tags must be stripped");
+        assert.ok(!sanitized.includes('<math'), "Math tags must be stripped");
+        assert.ok(!sanitized.includes('onclick='), "On* event handlers must be stripped");
+        assert.ok(!sanitized.includes('javascript:'), "Javascript: URLs must be stripped");
+        assert.ok(sanitized.includes('<h1>The Gospel According to John</h1>'), "Safe H1 tag must be preserved");
+        assert.ok(sanitized.includes('<p>In the beginning was the Word.</p>'), "Safe paragraph must be preserved");
+
+        // --- 2. Sliding-Window Rate Limiting Tests ---
+        const testLimiter = new SlidingWindowRateLimiter({
+            windowMs: 1000,
+            maxRequests: 5
+        });
+
+        const testIp = '192.168.1.100';
+        const now = Date.now();
+
+        // 5 requests within window must all be allowed
+        for (let i = 0; i < 5; i++) {
+            assert.equal(testLimiter.isRateLimited(testIp, now), false, `Request ${i + 1} must be allowed`);
+        }
+
+        // 6th request within same window must be rate limited
+        assert.equal(testLimiter.isRateLimited(testIp, now), true, "6th request exceeding limit of 5 must be rate limited");
+
+        // A different IP must not be affected by the first IP's rate limit
+        const anotherIp = '192.168.1.101';
+        assert.equal(testLimiter.isRateLimited(anotherIp, now), false, "Different IP must have its own bucket");
+
+        // After window expires (now + 1001ms), rate limit should reset
+        assert.equal(testLimiter.isRateLimited(testIp, now + 1001), false, "Request after window expiry must be allowed");
+
+        console.log("  ✅ HTML sanitization strictly neutralizes active XSS vectors; sliding-window rate limiter prevents abuse.");
+        passed++;
+        unitPassed++;
+    } catch (e) {
+        console.error("  ❌ Test 12 Failed:", e.message);
+        failed++;
+        unitFailed++;
+    }
+
     console.log(`\n======================================================`);
     console.log(`BIBLE RHEMA AI - SECURITY, RAG & ENTITLEMENT TEST REPORT`);
     console.log(`======================================================`);
     console.log(`Categorized Results:`);
-    console.log(`  • Unit Tests (Pure Logic & Invariants):    ${unitPassed} Passed, ${unitFailed} Failed (Total 9 Suites)`);
+    console.log(`  • Unit Tests (Pure Logic & Invariants):    ${unitPassed} Passed, ${unitFailed} Failed (Total 10 Suites)`);
     console.log(`  • Concurrency & Stress Simulation:         ${integrationPassed} Passed, ${integrationFailed} Failed (Total 1 Suite, 30 Workers)`);
     console.log(`  • Live Database Integration:               ${livePassed} Passed, ${liveFailed} Failed, ${liveSkipped} Skipped (Live DB credentials not in test env)`);
     console.log(`------------------------------------------------------`);
     console.log(`Overall Counts: ${passed} Passed, ${failed} Failed, ${skipped} Skipped out of ${passed + failed + skipped} Suites`);
     console.log(`======================================================\n`);
-
-    if (failed > 0) {
-        process.exit(1);
-    }
 
     if (failed > 0) {
         process.exit(1);

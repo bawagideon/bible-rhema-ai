@@ -7,6 +7,7 @@ import type { SermonData } from "./sermon-builder";
 import { useRhema } from "@/lib/store/rhema-context";
 import { toast } from "sonner";
 import { UpgradeDialog } from "./upgrade-dialog";
+import { sanitizeManuscriptHtml } from "@/lib/sanitizer";
 
 interface LivePreviewProps {
     data: SermonData;
@@ -85,18 +86,6 @@ export function LivePreview({ data }: LivePreviewProps) {
         }
     };
 
-    // Client-side HTML sanitization preventing XSS execution in preview
-    const sanitizeHtml = (html: string) => {
-        if (!html || typeof html !== 'string') return '';
-        return html
-            .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-            .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
-            .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
-            .replace(/<embed\b[^<]*(?:(?!<\/embed>)<[^<]*)*<\/embed>/gi, '')
-            .replace(/on\w+\s*=\s*(["']).*?\1/gi, '')
-            .replace(/javascript:/gi, '');
-    };
-
     return (
         <div className="h-full w-full bg-[#1c1c1c] flex flex-col items-center p-8 overflow-y-auto relative">
             <UpgradeDialog
@@ -132,7 +121,7 @@ export function LivePreview({ data }: LivePreviewProps) {
                         {data.notes ? (
                             <div
                                 className="tiptap-preview [&_h1]:break-after-avoid [&_h2]:break-after-avoid [&_blockquote]:break-inside-avoid"
-                                dangerouslySetInnerHTML={{ __html: sanitizeHtml(data.notes) }}
+                                dangerouslySetInnerHTML={{ __html: sanitizeManuscriptHtml(data.notes) }}
                             />
                         ) : (
                             <span className="text-gray-300 italic">Start typing your revelation...</span>

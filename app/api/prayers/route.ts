@@ -5,7 +5,8 @@ import { recordUserActivity } from "@/lib/activity";
 import {
     validatePrayerCreate,
     validatePrayerUpdate,
-    validatePrayerReport
+    validatePrayerReport,
+    validatePrayerReportReason
 } from "@/lib/prayers/moderation";
 
 export const dynamic = 'force-dynamic';
@@ -38,7 +39,7 @@ export async function GET(req: NextRequest) {
 
             if (error) {
                 console.error("Community prayers fetch error:", error);
-                return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+                return NextResponse.json({ success: false, error: "Failed to fetch community prayers" }, { status: 500 });
             }
 
             // Mask user_id to prevent tracking while allowing author self-identification
@@ -60,13 +61,13 @@ export async function GET(req: NextRequest) {
 
         if (error) {
             console.error("User prayers fetch error:", error);
-            return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+            return NextResponse.json({ success: false, error: "Failed to fetch user prayers" }, { status: 500 });
         }
 
         return NextResponse.json({ success: true, data: data || [] });
     } catch (e: any) {
         console.error("Error in GET /api/prayers:", e);
-        return NextResponse.json({ success: false, error: e.message || "Failed to fetch prayers" }, { status: 500 });
+        return NextResponse.json({ success: false, error: "Failed to fetch prayers" }, { status: 500 });
     }
 }
 
@@ -132,7 +133,7 @@ export async function POST(req: NextRequest) {
 
         if (error) {
             console.error("Error creating prayer:", error);
-            return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+            return NextResponse.json({ success: false, error: "Failed to create prayer" }, { status: 500 });
         }
 
         // Record user activity for streak
@@ -141,7 +142,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: true, data });
     } catch (e: any) {
         console.error("Error in POST /api/prayers:", e);
-        return NextResponse.json({ success: false, error: e.message || "Failed to create prayer" }, { status: 500 });
+        return NextResponse.json({ success: false, error: "Failed to create prayer" }, { status: 500 });
     }
 }
 
@@ -164,11 +165,16 @@ export async function PATCH(req: NextRequest) {
 
         // Community Moderation Reporting Action
         if (action === 'report') {
+            const reasonValidation = validatePrayerReportReason(body.reason);
+            if (!reasonValidation.isValid) {
+                return NextResponse.json({ success: false, error: reasonValidation.error }, { status: 400 });
+            }
+
             const reason = (typeof body.reason === 'string' && body.reason.trim())
-                ? body.reason.trim().slice(0, 500)
+                ? body.reason.trim()
                 : 'Inappropriate or sensitive content';
 
-            // Attempt atomic stored procedure execution first
+            // Atomic stored procedure execution - fail-closed architecture
             const { data: rpcData, error: rpcErr } = await supabase.rpc('report_community_prayer', {
                 p_prayer_id: id,
                 p_reporter_id: userId,
@@ -207,69 +213,12 @@ export async function PATCH(req: NextRequest) {
                 }, { status: 409 });
             }
 
-            // Fallback for environments where RPC might not be present:
-            // 1. Fetch target prayer and validate
-            const { data: targetPrayer, error: fetchErr } = await supabase
-                .from('prayers')
-                .select('id, user_id, title, is_community')
-                .eq('id', id)
-                .single();
-
-            if (fetchErr || !targetPrayer) {
-                return NextResponse.json({ success: false, error: "Petition not found" }, { status: 404 });
-            }
-
-            const reportValidation = validatePrayerReport(targetPrayer, userId, reason);
-            if (!reportValidation.isValid) {
-                return NextResponse.json({ success: false, error: reportValidation.error }, { status: 400 });
-            }
-
-            // 2. CRITICAL AUDIT REQUIREMENT: Persist durable moderation report record FIRST.
-            // Never unpublish or claim success if the moderation audit log insert fails!
-            const { data: insertedReport, error: reportInsertErr } = await supabase
-                .from('prayer_moderation_reports')
-                .insert({
-                    prayer_id: id,
-                    reporter_id: userId,
-                    reason,
-                    status: 'pending_review',
-                    prayer_title_snapshot: targetPrayer.title,
-                    reported_user_id_snapshot: targetPrayer.user_id
-                })
-                .select('id')
-                .single();
-
-            if (reportInsertErr) {
-                if (reportInsertErr.code === '23505' || reportInsertErr.message?.includes('duplicate key')) {
-                    return NextResponse.json({
-                        success: false,
-                        error: "You have already submitted a report for this petition."
-                    }, { status: 409 });
-                }
-                console.error("Durable moderation log insert failed:", reportInsertErr);
-                return NextResponse.json({
-                    success: false,
-                    error: "Failed to record moderation report. Petition was not unpublished."
-                }, { status: 500 });
-            }
-
-            // 3. ONLY after durable report is recorded, unpublish the prayer from the community wall
-            const { error: unpublishErr } = await supabase
-                .from('prayers')
-                .update({ is_community: false })
-                .eq('id', id)
-                .eq('is_community', true);
-
-            if (unpublishErr) {
-                console.error("Error unpublishing reported prayer:", unpublishErr);
-                return NextResponse.json({ success: false, error: unpublishErr.message }, { status: 500 });
-            }
-
+            // Fail-closed: Never unpublish or acknowledge without the atomic transaction completing
+            console.error("Moderation report RPC error:", rpcErr);
             return NextResponse.json({
-                success: true,
-                message: "Petition reported and removed from the community prayer wall. A durable moderation record has been logged for review.",
-                report_id: insertedReport?.id
-            });
+                success: false,
+                error: "Failed to record moderation report. Please try again later."
+            }, { status: 500 });
         }
 
         // Author Updates (status, testimony, unpublish / publish)
@@ -304,13 +253,14 @@ export async function PATCH(req: NextRequest) {
         if (error || !data) {
             return NextResponse.json({
                 success: false,
-                error: error?.message || "Petition not found or you are not authorized to edit this petition."
+                error: "Petition not found or you are not authorized to edit this petition."
             }, { status: 403 });
         }
 
         return NextResponse.json({ success: true, data });
     } catch (e: any) {
-        return NextResponse.json({ success: false, error: e.message || "Failed to update petition" }, { status: 500 });
+        console.error("Error in PATCH /api/prayers:", e);
+        return NextResponse.json({ success: false, error: "Failed to update petition" }, { status: 500 });
     }
 }
 
@@ -338,12 +288,12 @@ export async function DELETE(req: NextRequest) {
 
         if (error) {
             console.error("Error deleting prayer:", error);
-            return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+            return NextResponse.json({ success: false, error: "Failed to delete prayer" }, { status: 500 });
         }
 
         return NextResponse.json({ success: true });
     } catch (e: any) {
         console.error("Error in DELETE /api/prayers:", e);
-        return NextResponse.json({ success: false, error: e.message }, { status: 500 });
+        return NextResponse.json({ success: false, error: "Failed to delete prayer" }, { status: 500 });
     }
 }

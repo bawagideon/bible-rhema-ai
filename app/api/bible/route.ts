@@ -1,10 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveScripturePassage } from "@/lib/bible/api-bible";
+import { scriptureRateLimiter } from "@/lib/rate-limit";
 
 export const dynamic = 'force-dynamic';
 
+function getClientIp(req: NextRequest): string {
+    const forwarded = req.headers.get("x-forwarded-for");
+    if (forwarded) {
+        const parts = forwarded.split(",");
+        if (parts[0] && parts[0].trim()) {
+            return parts[0].trim();
+        }
+    }
+    const realIp = req.headers.get("x-real-ip");
+    if (realIp && realIp.trim()) {
+        return realIp.trim();
+    }
+    return "127.0.0.1";
+}
+
 export async function GET(req: NextRequest) {
     try {
+        const clientIp = getClientIp(req);
+        if (scriptureRateLimiter.isRateLimited(clientIp)) {
+            return NextResponse.json({
+                success: false,
+                error: "Rate limit exceeded. Maximum 60 scripture resolution requests per minute permitted."
+            }, {
+                status: 429,
+                headers: { 'Retry-After': '60' }
+            });
+        }
+
         const { searchParams } = new URL(req.url);
         const ref = searchParams.get('ref') || searchParams.get('query');
         const version = searchParams.get('version') || 'WEB';

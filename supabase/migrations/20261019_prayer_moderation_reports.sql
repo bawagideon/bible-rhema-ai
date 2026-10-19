@@ -61,6 +61,11 @@ DECLARE
     v_prayer RECORD;
     v_report_id UUID;
 BEGIN
+    -- Enforce service_role execution boundary to prevent client-side reporter spoofing
+    IF current_setting('role', true) <> 'service_role' AND auth.role() <> 'service_role' THEN
+        RAISE EXCEPTION 'FORBIDDEN: report_community_prayer can only be executed by service_role';
+    END IF;
+
     IF p_prayer_id IS NULL OR p_reporter_id IS NULL THEN
         RAISE EXCEPTION 'INVALID_PARAMS: prayer_id and reporter_id are required.';
     END IF;
@@ -124,7 +129,7 @@ $$;
 
 REVOKE ALL ON FUNCTION public.report_community_prayer(UUID, TEXT, TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.report_community_prayer(UUID, TEXT, TEXT) FROM anon;
-GRANT EXECUTE ON FUNCTION public.report_community_prayer(UUID, TEXT, TEXT) TO authenticated;
+REVOKE ALL ON FUNCTION public.report_community_prayer(UUID, TEXT, TEXT) FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.report_community_prayer(UUID, TEXT, TEXT) TO service_role;
 
 COMMIT;
