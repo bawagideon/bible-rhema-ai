@@ -16,6 +16,8 @@ export interface ScriptureVerse {
     source: 'api.bible' | 'open-bible' | 'canonical-cache';
     attributionNote?: string;
     verseRangeCovered?: boolean;
+    isExcerpt?: boolean;
+    quotationCompleteness?: 'full' | 'excerpt';
 }
 
 export interface ParsedScriptureRef {
@@ -37,12 +39,33 @@ const BIBLE_IDS: Record<string, string> = {
 };
 
 /**
+ * Canonical translation identifier normalizer.
+ * Maps verbose provider names (e.g. "World English Bible") and case variations
+ * into canonical short codes ("WEB", "KJV", "ESV", "ASV", "NIV", "NASB", "NKJV").
+ */
+export function normalizeTranslationCode(nameOrCode: string | undefined): string {
+    if (!nameOrCode || typeof nameOrCode !== 'string') return 'UNKNOWN';
+    const clean = nameOrCode.trim().toUpperCase();
+    if (clean === 'WEB' || clean.includes('WORLD ENGLISH')) return 'WEB';
+    if (clean === 'KJV' || clean.includes('KING JAMES')) return 'KJV';
+    if (clean === 'ASV' || clean.includes('AMERICAN STANDARD')) return 'ASV';
+    if (clean === 'ESV' || clean.includes('ENGLISH STANDARD')) return 'ESV';
+    if (clean === 'NIV' || clean.includes('NEW INTERNATIONAL')) return 'NIV';
+    if (clean === 'NASB' || clean.includes('NEW AMERICAN STANDARD')) return 'NASB';
+    if (clean === 'NKJV' || clean.includes('NEW KING JAMES')) return 'NKJV';
+    if (clean === 'NLT' || clean.includes('NEW LIVING')) return 'NLT';
+    return clean;
+}
+
+/**
  * Normalizes a scripture reference string into structured book, chapter, and verse boundaries.
- * Enforces exact book aliases and verse ranges to eliminate substring false-positives.
+ * Enforces exact book aliases, bounds checking (rejecting 0, negative, and reversed ranges),
+ * and sensible length limits to eliminate false-positives.
  */
 export function parseScriptureRef(ref: string): ParsedScriptureRef | null {
     if (!ref || typeof ref !== 'string') return null;
     const clean = ref.trim().toLowerCase().replace(/\s+/g, ' ');
+    if (clean.length > 100 || clean.length < 3) return null;
 
     // Match book chapter:verse or book chapter:startVerse-endVerse
     // e.g. "john 3:16", "1 corinthians 13:4-8", "psalm 23:1-3", "romans 8:38-39"
@@ -50,14 +73,79 @@ export function parseScriptureRef(ref: string): ParsedScriptureRef | null {
     if (!m) return null;
 
     let book = m[1].toLowerCase().trim();
-    // Normalize aliases
-    if (book === 'psalms') book = 'psalm';
-    if (book === 'song of songs') book = 'song of solomon';
+    // Normalize aliases & abbreviations
+    const bookMap: Record<string, string> = {
+        'psalms': 'psalm',
+        'ps': 'psalm',
+        'song of songs': 'song of solomon',
+        'canticles': 'song of solomon',
+        'gen': 'genesis',
+        'ex': 'exodus',
+        'lev': 'leviticus',
+        'num': 'numbers',
+        'deut': 'deuteronomy',
+        'josh': 'joshua',
+        'judg': 'judges',
+        'prov': 'proverbs',
+        'eccles': 'ecclesiastes',
+        'isa': 'isaiah',
+        'jer': 'jeremiah',
+        'lam': 'lamentations',
+        'ezek': 'ezekiel',
+        'dan': 'daniel',
+        'matt': 'matthew',
+        'mt': 'matthew',
+        'mk': 'mark',
+        'lk': 'luke',
+        'jn': 'john',
+        'rom': 'romans',
+        '1 cor': '1 corinthians',
+        '2 cor': '2 corinthians',
+        'gal': 'galatians',
+        'eph': 'ephesians',
+        'phil': 'philippians',
+        'col': 'colossians',
+        '1 thess': '1 thessalonians',
+        '2 thess': '2 thessalonians',
+        '1 tim': '1 timothy',
+        '2 tim': '2 timothy',
+        'tit': 'titus',
+        'philem': 'philemon',
+        'heb': 'hebrews',
+        'jas': 'james',
+        '1 pet': '1 peter',
+        '2 pet': '2 peter',
+        '1 jn': '1 john',
+        '2 jn': '2 john',
+        '3 jn': '3 john',
+        'rev': 'revelation'
+    };
+    if (bookMap[book]) {
+        book = bookMap[book];
+    }
 
     const chapter = parseInt(m[2], 10);
-    const startVerse = m[3] ? parseInt(m[3], 10) : undefined;
-    const endVerse = m[4] ? parseInt(m[4], 10) : startVerse;
-    const isRange = Boolean(m[4] && parseInt(m[4], 10) !== startVerse);
+    // Logical bounds: chapter must be > 0 and <= 150 (Psalms has 150 chapters)
+    if (isNaN(chapter) || chapter <= 0 || chapter > 150) return null;
+
+    let startVerse: number | undefined;
+    let endVerse: number | undefined;
+
+    if (m[3]) {
+        startVerse = parseInt(m[3], 10);
+        // Logical bounds: verse must be > 0 and <= 176 (Psalm 119 has 176 verses)
+        if (isNaN(startVerse) || startVerse <= 0 || startVerse > 176) return null;
+        endVerse = startVerse;
+    }
+
+    if (m[4]) {
+        endVerse = parseInt(m[4], 10);
+        if (isNaN(endVerse) || endVerse <= 0 || endVerse > 176) return null;
+        // Logical bounds: endVerse cannot be less than startVerse (reject reversed ranges like 17-16)
+        if (startVerse !== undefined && endVerse < startVerse) return null;
+    }
+
+    const isRange = Boolean(startVerse !== undefined && endVerse !== undefined && endVerse !== startVerse);
 
     let normalized = `${book} ${chapter}`;
     if (startVerse !== undefined) {
@@ -79,7 +167,15 @@ export function parseScriptureRef(ref: string): ParsedScriptureRef | null {
 
 // Comprehensive Canonical Cache for instant, offline, zero-network resolution.
 // Indexed strictly by exact normalized reference key (book chapter:startVerse-endVerse).
-export const CANONICAL_SCRIPTURE_CACHE: Record<string, { ref: string; text: string; translation: string; startVerse: number; endVerse: number }> = {
+export const CANONICAL_SCRIPTURE_CACHE: Record<string, {
+    ref: string;
+    text: string;
+    translation: string;
+    startVerse: number;
+    endVerse: number;
+    isExcerpt?: boolean;
+    quotationCompleteness?: 'full' | 'excerpt';
+}> = {
     "john 1:1": {
         ref: "John 1:1",
         translation: "ESV",
@@ -176,7 +272,9 @@ export const CANONICAL_SCRIPTURE_CACHE: Record<string, { ref: string; text: stri
         translation: "ESV",
         startVerse: 15,
         endVerse: 17,
-        text: "He is the image of the invisible God, the firstborn of all creation. For by him all things were created, in heaven and on earth, visible and invisible... all things were created through him and for him."
+        text: "He is the image of the invisible God, the firstborn of all creation. For by him all things were created, in heaven and on earth, visible and invisible, whether thrones or dominions or rulers or authorities—all things were created through him and for him. And he is before all things, and in him all things hold together.",
+        isExcerpt: false,
+        quotationCompleteness: 'full'
     },
     "2 timothy 3:16-17": {
         ref: "2 Timothy 3:16-17",
@@ -270,22 +368,23 @@ export const CANONICAL_SCRIPTURE_CACHE: Record<string, { ref: string; text: stri
 export function detectScriptureReference(text: string): string | null {
     if (!text || typeof text !== 'string') return null;
 
-    const scriptureRegex = /\b(?:[123]\s+)?(?:Genesis|Exodus|Leviticus|Numbers|Deuteronomy|Joshua|Judges|Ruth|[12]\s+Samuel|[12]\s+Kings|[12]\s+Chronicles|Ezra|Nehemiah|Esther|Job|Psalms?|Proverbs|Ecclesiastes|Song of Solomon|Song of Songs|Isaiah|Jeremiah|Lamentations|Ezekiel|Daniel|Hosea|Joel|Amos|Obadiah|Jonah|Micah|Nahum|Habakkuk|Zephaniah|Haggai|Zechariah|Malachi|Matthew|Mark|Luke|John|Acts|Romans|[12]\s+Corinthians|Galatians|Ephesians|Philippians|Colossians|[12]\s+Thessalonians|[12]\s+Timothy|Titus|Philemon|Hebrews|James|[12]\s+Peter|[123]\s+John|Jude|Revelation)\s+\d+(?::\d+(?:-\d+)?)?\b/i;
+    const scriptureRegex = /\b(?:[123]\s+)?(?:Genesis|Exodus|Leviticus|Numbers|Deuteronomy|Joshua|Judges|Ruth|[12]\s+Samuel|[12]\s+Kings|[12]\s+Chronicles|Ezra|Nehemiah|Esther|Job|Psalms?|Proverbs|Ecclesiastes|Song of Solomon|Song of Songs|Isaiah|Jeremiah|Lamentations|Ezekiel|Daniel|Hosea|Joel|Amos|Obadiah|Jonah|Micah|Nahum|Habakkuk|Zephaniah|Haggai|Zechariah|Malachi|Matthew|Mark|Luke|John|Acts|Romans|[12]\s+Corinthians|Galatians|Ephesians|Philippians|Colossians|[12]\s+Thessalonians|[12]\s+Timothy|Titus|Philemon|Hebrews|James|[12]\s+Peter|[123]\s+John|Jude|Revelation|Gen|Ex|Lev|Num|Deut|Josh|Judg|Ruth|[12]\s+Sam|[12]\s+Kgs|[12]\s+Chron|Ezr|Neh|Esth|Ps|Prov|Eccles|Song|Isa|Jer|Lam|Ezek|Dan|Hos|Joel|Amos|Obad|Jon|Mic|Nah|Hab|Zeph|Hag|Zech|Mal|Matt|Mt|Mk|Lk|Jn|Acts|Rom|[12]\s+Cor|Gal|Eph|Phil|Col|[12]\s+Thess|[12]\s+Tim|Tit|Philem|Heb|Jas|[12]\s+Pet|[123]\s+Jn|Jude|Rev)\.?\s*\d+(?::\d+(?:[-–—]\d+)?)?\b/i;
 
     const match = text.match(scriptureRegex);
     return match ? match[0] : null;
 }
 
 /**
- * Extracts all unique Scripture references from a block of text or HTML
+ * Extracts all unique Scripture references from a block of text or HTML.
+ * Handles abbreviations, punctuation, en-dashes, and common citation formats.
  */
 export function extractAllScriptureReferences(text: string): string[] {
     if (!text || typeof text !== 'string') return [];
 
-    // Strip HTML tags if present
-    const plain = text.replace(/<[^>]+>/g, ' ');
+    // Strip HTML tags if present and normalize dashes
+    const plain = text.replace(/<[^>]+>/g, ' ').replace(/[–—]/g, '-');
 
-    const scriptureRegex = /\b(?:[123]\s+)?(?:Genesis|Exodus|Leviticus|Numbers|Deuteronomy|Joshua|Judges|Ruth|[12]\s+Samuel|[12]\s+Kings|[12]\s+Chronicles|Ezra|Nehemiah|Esther|Job|Psalms?|Proverbs|Ecclesiastes|Song of Solomon|Song of Songs|Isaiah|Jeremiah|Lamentations|Ezekiel|Daniel|Hosea|Joel|Amos|Obadiah|Jonah|Micah|Nahum|Habakkuk|Zephaniah|Haggai|Zechariah|Malachi|Matthew|Mark|Luke|John|Acts|Romans|[12]\s+Corinthians|Galatians|Ephesians|Philippians|Colossians|[12]\s+Thessalonians|[12]\s+Timothy|Titus|Philemon|Hebrews|James|[12]\s+Peter|[123]\s+John|Jude|Revelation)\s+\d+(?::\d+(?:-\d+)?)?\b/gi;
+    const scriptureRegex = /\b(?:[123]\s+)?(?:Genesis|Exodus|Leviticus|Numbers|Deuteronomy|Joshua|Judges|Ruth|[12]\s+Samuel|[12]\s+Kings|[12]\s+Chronicles|Ezra|Nehemiah|Esther|Job|Psalms?|Proverbs|Ecclesiastes|Song of Solomon|Song of Songs|Isaiah|Jeremiah|Lamentations|Ezekiel|Daniel|Hosea|Joel|Amos|Obadiah|Jonah|Micah|Nahum|Habakkuk|Zephaniah|Haggai|Zechariah|Malachi|Matthew|Mark|Luke|John|Acts|Romans|[12]\s+Corinthians|Galatians|Ephesians|Philippians|Colossians|[12]\s+Thessalonians|[12]\s+Timothy|Titus|Philemon|Hebrews|James|[12]\s+Peter|[123]\s+John|Jude|Revelation|Gen|Ex|Lev|Num|Deut|Josh|Judg|Ruth|[12]\s+Sam|[12]\s+Kgs|[12]\s+Chron|Ezr|Neh|Esth|Ps|Prov|Eccles|Song|Isa|Jer|Lam|Ezek|Dan|Hos|Joel|Amos|Obad|Jon|Mic|Nah|Hab|Zeph|Hag|Zech|Mal|Matt|Mt|Mk|Lk|Jn|Acts|Rom|[12]\s+Cor|Gal|Eph|Phil|Col|[12]\s+Thess|[12]\s+Tim|Tit|Philem|Heb|Jas|[12]\s+Pet|[123]\s+Jn|Jude|Rev)\.?\s*\d+(?::\d+(?:-\d+)?)?\b/gi;
 
     const matches = plain.match(scriptureRegex) || [];
     const unique = new Set<string>();
@@ -298,74 +397,100 @@ export function extractAllScriptureReferences(text: string): string[] {
     return Array.from(unique);
 }
 
+export interface ResolveScriptureOptions {
+    customFetch?: typeof fetch;
+    timeoutMs?: number;
+}
+
 /**
  * Fetch verified Scripture passage with exact normalized reference matching,
- * verse-range validation, and honest translation labeling.
+ * verse-range validation, and truthful translation attribution.
+ * Never suppresses translation mismatches or marks unproven ranges as covered.
  */
 export async function resolveScripturePassage(
     reference: string,
-    requestedVersion: string = "ESV"
+    requestedVersion: string = "ESV",
+    options: ResolveScriptureOptions = {}
 ): Promise<ScriptureVerse | null> {
     const cleanRef = reference.trim();
-    if (!cleanRef) return null;
+    if (!cleanRef || cleanRef.length > 100) return null;
 
-    const reqUpper = requestedVersion.toUpperCase();
+    const normReq = normalizeTranslationCode(requestedVersion);
     const parsedReq = parseScriptureRef(cleanRef);
+    if (!parsedReq) return null;
+
+    const fetchFn = options.customFetch || fetch;
+    const timeoutMs = options.timeoutMs || 8000;
 
     // 1. If the requested version is ESV, check the canonical cache first with EXACT normalized matching
-    if (reqUpper === "ESV" && parsedReq) {
+    if (normReq === "ESV") {
         const cached = CANONICAL_SCRIPTURE_CACHE[parsedReq.normalized];
         if (cached) {
             return {
                 reference: cached.ref,
                 normalizedReference: parsedReq.normalized,
                 translation: cached.translation,
-                requestedTranslation: reqUpper,
+                requestedTranslation: normReq,
                 isTranslationMismatch: false,
                 text: cached.text,
                 source: 'canonical-cache',
-                verseRangeCovered: true
+                verseRangeCovered: true,
+                isExcerpt: cached.isExcerpt ?? false,
+                quotationCompleteness: cached.quotationCompleteness ?? 'full'
             };
         }
     }
 
     // 2. Query open public domain Scripture resolver (bible-api.com) for requested translation
     try {
-        const transParam = reqUpper === 'KJV' ? '?translation=kjv' : '';
-        const res = await fetch(`https://bible-api.com/${encodeURIComponent(cleanRef)}${transParam}`, {
-            next: { revalidate: 86400 }
-        });
+        const transParam = normReq === 'KJV' ? '?translation=kjv' : '';
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-        if (res.ok) {
-            const data = await res.json();
-            if (data.text) {
-                const actualTranslation = (data.translation_name || "WEB").toUpperCase();
-                const isMismatch = reqUpper !== actualTranslation && reqUpper !== 'ESV';
+        try {
+            const res = await fetchFn(`https://bible-api.com/${encodeURIComponent(cleanRef)}${transParam}`, {
+                signal: controller.signal,
+                next: { revalidate: 86400 }
+            });
 
-                // Check verse coverage if a specific range was requested
-                let isRangeCovered = true;
-                if (parsedReq && parsedReq.isRange && Array.isArray(data.verses) && data.verses.length > 0) {
-                    const firstV = data.verses[0]?.verse;
-                    const lastV = data.verses[data.verses.length - 1]?.verse;
-                    if (parsedReq.startVerse !== undefined && parsedReq.endVerse !== undefined) {
-                        isRangeCovered = firstV <= parsedReq.startVerse && lastV >= parsedReq.endVerse;
+            if (res.ok) {
+                const data = await res.json();
+                if (data && data.text) {
+                    const normActual = normalizeTranslationCode(data.translation_name || "WEB");
+                    const isMismatch = normReq !== normActual;
+
+                    // Verify verse coverage if a specific range was requested
+                    let isRangeCovered = true;
+                    if (parsedReq.isRange && Array.isArray(data.verses) && data.verses.length > 0) {
+                        const firstV = data.verses[0]?.verse;
+                        const lastV = data.verses[data.verses.length - 1]?.verse;
+                        if (parsedReq.startVerse !== undefined && parsedReq.endVerse !== undefined) {
+                            isRangeCovered = (firstV !== undefined && lastV !== undefined) &&
+                                             (firstV <= parsedReq.startVerse && lastV >= parsedReq.endVerse);
+                        } else {
+                            isRangeCovered = false;
+                        }
                     }
-                }
 
-                return {
-                    reference: data.reference || cleanRef,
-                    normalizedReference: parsedReq?.normalized,
-                    translation: actualTranslation,
-                    requestedTranslation: reqUpper,
-                    isTranslationMismatch: isMismatch,
-                    text: data.text.trim(),
-                    source: 'open-bible',
-                    verseRangeCovered: isRangeCovered,
-                    attributionNote: isMismatch
-                        ? `Quoted in ${actualTranslation} (Public Domain); requested ${reqUpper}.`
-                        : undefined
-                };
+                    return {
+                        reference: data.reference || cleanRef,
+                        normalizedReference: parsedReq.normalized,
+                        translation: normActual,
+                        requestedTranslation: normReq,
+                        isTranslationMismatch: isMismatch,
+                        text: data.text.trim(),
+                        source: 'open-bible',
+                        verseRangeCovered: isRangeCovered,
+                        isExcerpt: false,
+                        quotationCompleteness: 'full',
+                        attributionNote: isMismatch
+                            ? `Quoted in ${normActual} (Public Domain); requested ${normReq}.`
+                            : undefined
+                    };
+                }
             }
+        } finally {
+            clearTimeout(timer);
         }
     } catch (openErr) {
         console.warn("Open scripture resolver network failure:", openErr);
@@ -375,34 +500,61 @@ export async function resolveScripturePassage(
     const apiKey = process.env.API_BIBLE_KEY || process.env.BIBLE_API_KEY;
     if (apiKey && apiKey !== "placeholder-api-bible-key") {
         try {
-            const bibleId = BIBLE_IDS[reqUpper] || BIBLE_IDS.WEB;
-            const res = await fetch(`${API_BIBLE_BASE}/bibles/${bibleId}/search?query=${encodeURIComponent(cleanRef)}`, {
-                headers: { "api-key": apiKey },
-                next: { revalidate: 86400 }
-            });
+            const bibleId = BIBLE_IDS[normReq] || BIBLE_IDS.WEB;
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-            if (res.ok) {
-                const data = await res.json();
-                const verses = data.data?.verses;
-                if (verses && verses.length > 0) {
-                    const combinedText = verses.map((v: any) => v.text.replace(/<[^>]+>/g, '').trim()).join(" ");
-                    const actualTranslation = BIBLE_IDS[reqUpper] ? reqUpper : "WEB";
-                    const isMismatch = reqUpper !== actualTranslation;
+            try {
+                const res = await fetchFn(`${API_BIBLE_BASE}/bibles/${bibleId}/search?query=${encodeURIComponent(cleanRef)}`, {
+                    headers: { "api-key": apiKey },
+                    signal: controller.signal,
+                    next: { revalidate: 86400 }
+                });
 
-                    return {
-                        reference: cleanRef,
-                        normalizedReference: parsedReq?.normalized,
-                        translation: actualTranslation,
-                        requestedTranslation: reqUpper,
-                        isTranslationMismatch: isMismatch,
-                        text: combinedText,
-                        source: 'api.bible',
-                        verseRangeCovered: true,
-                        attributionNote: isMismatch
-                            ? `Quoted from ${actualTranslation} via API.Bible; requested ${reqUpper}.`
-                            : undefined
-                    };
+                if (res.ok) {
+                    const data = await res.json();
+                    const verses = data.data?.verses;
+                    if (verses && verses.length > 0) {
+                        const combinedText = verses.map((v: any) => v.text.replace(/<[^>]+>/g, '').trim()).join(" ");
+                        const actualTranslation = normalizeTranslationCode(BIBLE_IDS[normReq] ? normReq : "WEB");
+                        const isMismatch = normReq !== actualTranslation;
+
+                        // Validate range coverage from returned verse items
+                        let isRangeCovered = true;
+                        if (parsedReq.isRange && parsedReq.startVerse !== undefined && parsedReq.endVerse !== undefined) {
+                            const verseNums = verses.map((v: any) => {
+                                const vMatch = (v.reference || v.id || '').match(/(\d+)$/);
+                                return vMatch ? parseInt(vMatch[1], 10) : null;
+                            }).filter((n: number | null): n is number => n !== null);
+
+                            if (verseNums.length > 0) {
+                                const minV = Math.min(...verseNums);
+                                const maxV = Math.max(...verseNums);
+                                isRangeCovered = minV <= parsedReq.startVerse && maxV >= parsedReq.endVerse;
+                            } else {
+                                isRangeCovered = false;
+                            }
+                        }
+
+                        return {
+                            reference: cleanRef,
+                            normalizedReference: parsedReq.normalized,
+                            translation: actualTranslation,
+                            requestedTranslation: normReq,
+                            isTranslationMismatch: isMismatch,
+                            text: combinedText,
+                            source: 'api.bible',
+                            verseRangeCovered: isRangeCovered,
+                            isExcerpt: false,
+                            quotationCompleteness: 'full',
+                            attributionNote: isMismatch
+                                ? `Quoted from ${actualTranslation} via API.Bible; requested ${normReq}.`
+                                : undefined
+                        };
+                    }
                 }
+            } finally {
+                clearTimeout(timer);
             }
         } catch (apiBibleErr) {
             console.warn("API.Bible request failed:", apiBibleErr);
@@ -410,24 +562,25 @@ export async function resolveScripturePassage(
     }
 
     // 4. Exact normalized Canonical Cache fallback (e.g. offline fallback for non-ESV queries)
-    if (parsedReq) {
-        const cached = CANONICAL_SCRIPTURE_CACHE[parsedReq.normalized];
-        if (cached) {
-            const isMismatch = reqUpper !== cached.translation;
-            return {
-                reference: cached.ref,
-                normalizedReference: parsedReq.normalized,
-                translation: cached.translation,
-                requestedTranslation: reqUpper,
-                isTranslationMismatch: isMismatch,
-                text: cached.text,
-                source: 'canonical-cache',
-                verseRangeCovered: true,
-                attributionNote: isMismatch
-                    ? `Quoted in ${cached.translation} from canonical cache; requested ${reqUpper}.`
-                    : undefined
-            };
-        }
+    const cached = CANONICAL_SCRIPTURE_CACHE[parsedReq.normalized];
+    if (cached) {
+        const cachedTrans = normalizeTranslationCode(cached.translation);
+        const isMismatch = normReq !== cachedTrans;
+        return {
+            reference: cached.ref,
+            normalizedReference: parsedReq.normalized,
+            translation: cached.translation,
+            requestedTranslation: normReq,
+            isTranslationMismatch: isMismatch,
+            text: cached.text,
+            source: 'canonical-cache',
+            verseRangeCovered: true,
+            isExcerpt: cached.isExcerpt ?? false,
+            quotationCompleteness: cached.quotationCompleteness ?? 'full',
+            attributionNote: isMismatch
+                ? `Quoted in ${cached.translation} from canonical cache; requested ${normReq}.`
+                : undefined
+        };
     }
 
     return null;

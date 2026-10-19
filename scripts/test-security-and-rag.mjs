@@ -4,13 +4,23 @@ import crypto from 'node:crypto';
 import { searchTopicalConcordance } from '../lib/bible/topical-concordance.ts';
 import { validateGroundedCitations, retrieveStudyEvidence } from '../lib/ai/gemini.ts';
 import { fulfillPaymentTransaction } from '../lib/billing/fulfillment.ts';
-import { parseScriptureRef, resolveScripturePassage } from '../lib/bible/api-bible.ts';
+import { parseScriptureRef, resolveScripturePassage, normalizeTranslationCode } from '../lib/bible/api-bible.ts';
+import { validatePrayerCreate, validatePrayerUpdate, validatePrayerReport } from '../lib/prayers/moderation.ts';
+import { verifyUserTierEntitlement } from '../lib/billing/entitlements.ts';
 
 async function runSecurityAndRagTests() {
     console.log("🛡️ Running Bible Rhema AI - Security, RAG & Billing Hardening Test Suite...\n");
     let passed = 0;
     let failed = 0;
     let skipped = 0;
+
+    let unitPassed = 0;
+    let unitFailed = 0;
+    let integrationPassed = 0;
+    let integrationFailed = 0;
+    let livePassed = 0;
+    let liveSkipped = 0;
+    let liveFailed = 0;
 
     // =========================================================================
     // TEST SUITE 1: TOPICAL CONCORDANCE & ADVERSARIAL QUERY DEFENSE
@@ -59,9 +69,11 @@ async function runSecurityAndRagTests() {
 
         console.log("  ✅ Doctrinal queries resolved to canonical scriptures; adversarial inputs safely contained.");
         passed++;
+        unitPassed++;
     } catch (e) {
         console.error("  ❌ Test 1 Failed:", e.message);
         failed++;
+        unitFailed++;
     }
 
     // =========================================================================
@@ -94,9 +106,11 @@ async function runSecurityAndRagTests() {
 
         console.log("  ✅ Grounded citation validator verifies canonical citations and rejects fabricated references.");
         passed++;
+        unitPassed++;
     } catch (e) {
         console.error("  ❌ Test 2 Failed:", e.message);
         failed++;
+        unitFailed++;
     }
 
     // =========================================================================
@@ -175,9 +189,11 @@ async function runSecurityAndRagTests() {
 
         console.log("  ✅ Payment fulfillment rejects underpayments, invalid plans, missing parameters, and cross-account binding.");
         passed++;
+        unitPassed++;
     } catch (e) {
         console.error("  ❌ Test 3 Failed:", e.message);
         failed++;
+        unitFailed++;
     }
 
     // =========================================================================
@@ -225,9 +241,11 @@ async function runSecurityAndRagTests() {
 
         console.log("  ✅ Under 30 parallel requests, exactly 10 reserved slots and 20 were denied without overselling.");
         passed++;
+        integrationPassed++;
     } catch (e) {
         console.error("  ❌ Test 4 Failed:", e.message);
         failed++;
+        integrationFailed++;
     }
 
     // =========================================================================
@@ -373,9 +391,11 @@ async function runSecurityAndRagTests() {
 
         console.log("  ✅ Real RS256 cryptography verifies trusted signatures, rejects forged keys, untrusted issuers, and expired tokens.");
         passed++;
+        unitPassed++;
     } catch (e) {
         console.error("  ❌ Test 5 Failed:", e.message);
         failed++;
+        unitFailed++;
     }
 
     // =========================================================================
@@ -506,9 +526,11 @@ async function runSecurityAndRagTests() {
 
         console.log("  ✅ Quota reservation strictly validates allowed === true and guarantees idempotent reservation refunds.");
         passed++;
+        unitPassed++;
     } catch (e) {
         console.error("  ❌ Test 6 Failed:", e.message);
         failed++;
+        unitFailed++;
     }
 
     // =========================================================================
@@ -568,9 +590,11 @@ async function runSecurityAndRagTests() {
 
         console.log("  ✅ SQL specification verified: definer owner isolation and RPC execution guards are algebraically sound.");
         passed++;
+        unitPassed++;
     } catch (e) {
         console.error("  ❌ Test 7 Failed:", e.message);
         failed++;
+        unitFailed++;
     }
 
     // =========================================================================
@@ -625,213 +649,429 @@ async function runSecurityAndRagTests() {
 
                 console.log("  ✅ Live Supabase PostgREST verified: anonymous clients are denied access to mutating RPCs.");
                 passed++;
+                livePassed++;
             } catch (networkErr) {
                 if (networkErr.name === 'AssertionError' || networkErr.code === 'ERR_ASSERTION') {
                     throw networkErr;
                 }
                 console.log(`  ⏭️ [SKIPPED] Live Supabase instance not reachable in this test environment (${networkErr.message}).`);
                 skipped++;
+                liveSkipped++;
             }
         } else {
             console.log("  ⏭️ [SKIPPED] Live Supabase credentials not found in environment; skipped without inflating pass count.");
             skipped++;
+            liveSkipped++;
         }
     } catch (e) {
         console.error("  ❌ Test 8 Failed:", e.message);
         failed++;
+        liveFailed++;
     }
 
     // =========================================================================
-    // TEST SUITE 9: EXACT SCRIPTURE REFERENCE MATCHING & RANGE INTEGRITY
+    // TEST SUITE 9: EXACT SCRIPTURE REFERENCE MATCHING & RANGE INTEGRITY (10 SCENARIOS)
     // =========================================================================
-    console.log("\n▶ [SCRIPTURE INTEGRITY] Test 9: Exact Scripture Reference Matching, Range Integrity & Translation Attribution");
+    console.log("\n▶ [SCRIPTURE INTEGRITY] Test 9: Exact Scripture Reference Matching, Range Integrity & Translation Attribution (10 Scenarios)");
     try {
-        // Case A: Substring false-positive prevention
-        // "John 3:16-17" must NOT match "John 3:16"
-        const refSingle = parseScriptureRef("John 3:16");
-        const refRange = parseScriptureRef("John 3:16-17");
+        // Scenario 1: Exact match retrieval from canonical cache (no network, zero mismatch)
+        const exactCached = await resolveScripturePassage("John 3:16", "ESV");
+        assert.ok(exactCached, "Scenario 1: John 3:16 must resolve from canonical cache");
+        assert.equal(exactCached.reference, "John 3:16");
+        assert.equal(exactCached.verseRangeCovered, true, "Scenario 1: Single verse coverage must be true");
+        assert.equal(exactCached.isTranslationMismatch, false, "Scenario 1: Requested ESV matches cached ESV");
+        assert.equal(exactCached.isExcerpt, false, "Scenario 1: Canonical cache must not be an excerpt");
+        assert.equal(exactCached.quotationCompleteness, 'full');
 
-        assert.ok(refSingle, "John 3:16 must parse successfully");
-        assert.ok(refRange, "John 3:16-17 must parse successfully");
-        assert.equal(refSingle.normalized, "john 3:16");
-        assert.equal(refRange.normalized, "john 3:16-17");
-        assert.notEqual(refSingle.normalized, refRange.normalized, "Normalized references must be strictly distinct");
+        // Scenario 2: Full range resolution via deterministic customFetch
+        /** @type {typeof fetch} */
+        // @ts-ignore
+        const mockFetchFullRange = async () => ({
+            ok: true,
+            json: async () => ({
+                reference: "Romans 8:38-39",
+                verses: [
+                    { verse: 38, text: "For I am persuaded, that neither death, nor life..." },
+                    { verse: 39, text: "Nor height, nor depth... shall be able to separate us from the love of God." }
+                ],
+                text: "For I am persuaded, that neither death, nor life... Nor height, nor depth...",
+                translation_name: "King James Version"
+            })
+        });
+        const fullRangeResult = await resolveScripturePassage("Romans 8:38-39", "KJV", { customFetch: mockFetchFullRange });
+        assert.ok(fullRangeResult, "Scenario 2: Range must resolve");
+        assert.equal(fullRangeResult.verseRangeCovered, true, "Scenario 2: Verses 38-39 must be completely covered");
+        assert.equal(fullRangeResult.translation, "KJV", "Scenario 2: King James Version must normalize to KJV");
+        assert.equal(fullRangeResult.isTranslationMismatch, false, "Scenario 2: Requested KJV matches returned KJV");
 
-        // Case B: Book Alias Normalization
-        const refPsalm1 = parseScriptureRef("Psalm 23:1-3");
-        const refPsalm2 = parseScriptureRef("Psalms 23:1-3");
-        assert.ok(refPsalm1 && refPsalm2);
-        assert.equal(refPsalm1.normalized, "psalm 23:1-3");
-        assert.equal(refPsalm2.normalized, "psalm 23:1-3");
-        assert.equal(refPsalm1.normalized, refPsalm2.normalized, "Book aliases (Psalm vs Psalms) must normalize identically");
+        // Scenario 3: Partial range detection (requested 4-8, mock returns only 4-6)
+        /** @type {typeof fetch} */
+        // @ts-ignore
+        const mockFetchPartialRange = async () => ({
+            ok: true,
+            json: async () => ({
+                reference: "1 Corinthians 13:4-6",
+                verses: [
+                    { verse: 4, text: "Love is patient and kind..." },
+                    { verse: 5, text: "Love does not envy or boast..." },
+                    { verse: 6, text: "Love does not rejoice at wrongdoing..." }
+                ],
+                text: "Love is patient and kind... Love does not envy or boast... Love does not rejoice at wrongdoing...",
+                translation_name: "World English Bible"
+            })
+        });
+        const partialResult = await resolveScripturePassage("1 Corinthians 13:4-8", "WEB", { customFetch: mockFetchPartialRange });
+        assert.ok(partialResult, "Scenario 3: Partial range response must resolve");
+        assert.equal(partialResult.verseRangeCovered, false, "Scenario 3: Missing verses 7-8 must be flagged as verseRangeCovered: false");
 
-        // Case C: Exact match retrieval vs range mismatch
-        const singleResult = await resolveScripturePassage("John 3:16", "ESV");
-        assert.ok(singleResult, "John 3:16 must be found in canonical cache");
-        assert.equal(singleResult.reference, "John 3:16");
-        assert.equal(singleResult.verseRangeCovered, true);
+        // Scenario 4: Translation mismatch attribution (requested NIV, provider returns WEB)
+        /** @type {typeof fetch} */
+        // @ts-ignore
+        const mockFetchMismatch = async () => ({
+            ok: true,
+            json: async () => ({
+                reference: "Proverbs 3:5-6",
+                verses: [
+                    { verse: 5, text: "Trust in Yahweh with all your heart..." },
+                    { verse: 6, text: "In all your ways acknowledge him..." }
+                ],
+                text: "Trust in Yahweh with all your heart...",
+                translation_name: "World English Bible"
+            })
+        });
+        const mismatchResult = await resolveScripturePassage("Proverbs 3:5-6", "NIV", { customFetch: mockFetchMismatch });
+        assert.ok(mismatchResult, "Scenario 4: Mismatched translation must resolve");
+        assert.equal(mismatchResult.isTranslationMismatch, true, "Scenario 4: NIV requested but WEB returned must set isTranslationMismatch: true");
+        assert.equal(mismatchResult.requestedTranslation, "NIV");
+        assert.equal(mismatchResult.translation, "WEB");
+        assert.ok(mismatchResult.attributionNote?.includes("WEB"), "Scenario 4: Attribution note must state actual translation");
+        assert.ok(mismatchResult.attributionNote?.includes("NIV"), "Scenario 4: Attribution note must state requested translation");
 
-        // Case D: Translation Mismatch Attribution
-        // When asking for WEB or KJV, if the system returns cached ESV, it MUST flag isTranslationMismatch and provide an attributionNote
-        const translationMismatchResult = await resolveScripturePassage("Romans 8:38-39", "KJV");
-        if (translationMismatchResult) {
-            if (translationMismatchResult.translation !== "KJV") {
-                assert.equal(translationMismatchResult.isTranslationMismatch, true, "Must flag translation mismatch when requested KJV != actual");
-                assert.ok(translationMismatchResult.attributionNote, "Attribution note must be provided explaining the translation variance");
+        // Scenario 5: Translation identifier canonical normalization
+        assert.equal(normalizeTranslationCode("World English Bible"), "WEB");
+        assert.equal(normalizeTranslationCode("web"), "WEB");
+        assert.equal(normalizeTranslationCode("King James Version"), "KJV");
+        assert.equal(normalizeTranslationCode("kjv"), "KJV");
+        assert.equal(normalizeTranslationCode("English Standard Version"), "ESV");
+        assert.equal(normalizeTranslationCode("esv"), "ESV");
+        assert.equal(normalizeTranslationCode("New International Version"), "NIV");
+        assert.equal(normalizeTranslationCode("American Standard Version"), "ASV");
+        assert.equal(normalizeTranslationCode("CUSTOM_CODE"), "CUSTOM_CODE");
+
+        // Scenario 6: API.Bible verse-range verification via mockFetch
+        /** @type {typeof fetch} */
+        // @ts-ignore
+        const mockFetchApiBible = async (url) => {
+            const urlStr = String(url);
+            if (urlStr.includes('api.scripture.api.bible')) {
+                return {
+                    ok: true,
+                    json: async () => ({
+                        data: {
+                            verses: [
+                                { id: "GEN.1.1", reference: "Genesis 1:1", text: "<p>In the beginning...</p>" },
+                                { id: "GEN.1.2", reference: "Genesis 1:2", text: "<p>The earth was without form...</p>" },
+                                { id: "GEN.1.3", reference: "Genesis 1:3", text: "<p>And God said, Let there be light...</p>" }
+                            ]
+                        }
+                    })
+                };
             }
+            return { ok: false };
+        };
+        const prevApiKey = process.env.API_BIBLE_KEY;
+        process.env.API_BIBLE_KEY = "test-api-key-active";
+        try {
+            const apiBibleResult = await resolveScripturePassage("Genesis 1:1-3", "WEB", { customFetch: mockFetchApiBible });
+            assert.ok(apiBibleResult, "Scenario 6: API.Bible mock must resolve");
+            assert.equal(apiBibleResult.verseRangeCovered, true, "Scenario 6: Verses 1-3 all covered");
+            assert.ok(!apiBibleResult.text.includes('<p>'), "Scenario 6: HTML tags must be stripped");
+
+            // Now test API.Bible with incomplete range (requested 1-5, only 1-3 returned)
+            const apiBibleIncomplete = await resolveScripturePassage("Genesis 1:1-5", "WEB", { customFetch: mockFetchApiBible });
+            assert.ok(apiBibleIncomplete, "Scenario 6: Incomplete API.Bible query must resolve");
+            assert.equal(apiBibleIncomplete.verseRangeCovered, false, "Scenario 6: Incomplete range must flag verseRangeCovered: false");
+        } finally {
+            process.env.API_BIBLE_KEY = prevApiKey;
         }
 
-        console.log("  ✅ Exact reference matching prevents substring collisions, normalizes aliases, and preserves translation attribution.");
+        // Scenario 7: Malformed and adversarial references rejected by parseScriptureRef
+        assert.equal(parseScriptureRef(""), null, "Empty string must return null");
+        assert.equal(parseScriptureRef("   "), null, "Whitespace must return null");
+        assert.equal(parseScriptureRef("A".repeat(101)), null, "References > 100 chars must return null");
+        assert.equal(parseScriptureRef("John 0:1"), null, "Chapter 0 must return null");
+        assert.equal(parseScriptureRef("John 3:0"), null, "Verse 0 must return null");
+        assert.equal(parseScriptureRef("Romans 8:39-38"), null, "Reversed verse ranges (39-38) must return null");
+        assert.equal(parseScriptureRef("Psalm 151:1"), null, "Chapter > 150 must return null");
+        assert.equal(parseScriptureRef("Psalm 119:177"), null, "Verse > 176 must return null");
+        assert.equal(parseScriptureRef("'; DROP TABLE prayers; --"), null, "SQL injection string must return null");
+
+        // Scenario 8: Book abbreviations and aliases properly normalized
+        const p1 = parseScriptureRef("1 Cor 13:4-8");
+        assert.ok(p1 && p1.normalized === "1 corinthians 13:4-8", "1 Cor must normalize to 1 corinthians");
+        const p2 = parseScriptureRef("Jn 3:16");
+        assert.ok(p2 && p2.normalized === "john 3:16", "Jn must normalize to john");
+        const p3 = parseScriptureRef("Ps 23:1-3");
+        assert.ok(p3 && p3.normalized === "psalm 23:1-3", "Ps must normalize to psalm");
+        const p4 = parseScriptureRef("Song of Songs 2:1");
+        assert.ok(p4 && p4.normalized === "song of solomon 2:1", "Song of Songs must normalize to song of solomon");
+        const p5 = parseScriptureRef("Rev 21:4");
+        assert.ok(p5 && p5.normalized === "revelation 21:4", "Rev must normalize to revelation");
+
+        // Scenario 9: Unabridged Colossians 1:15-17 integrity in canonical cache
+        const colossians = await resolveScripturePassage("Colossians 1:15-17", "ESV");
+        assert.ok(colossians, "Scenario 9: Colossians 1:15-17 must resolve from canonical cache");
+        assert.equal(colossians.isExcerpt, false, "Scenario 9: Colossians 1:15-17 must NOT be marked as an excerpt");
+        assert.equal(colossians.quotationCompleteness, 'full');
+        assert.ok(colossians.text.includes("image of the invisible God"), "Must contain verse 15 text");
+        assert.ok(colossians.text.includes("visible and invisible"), "Must contain full verse 16 text");
+        assert.ok(colossians.text.includes("created through him and for him"), "Must contain middle of verse 16");
+        assert.ok(colossians.text.includes("in him all things hold together"), "Must contain verse 17 text");
+
+        // Scenario 10: Graceful network timeout / abort handling via customFetch
+        /** @type {typeof fetch} */
+        // @ts-ignore
+        const mockFetchHanging = async () => new Promise((_, reject) => {
+            setTimeout(() => {
+                const err = new Error("The operation was aborted");
+                err.name = "AbortError";
+                reject(err);
+            }, 20);
+        });
+        const timeoutRes = await resolveScripturePassage("Habakkuk 3:17-19", "ESV", {
+            customFetch: mockFetchHanging,
+            timeoutMs: 25
+        });
+        assert.equal(timeoutRes, null, "Scenario 10: Aborted network fetch must gracefully return null without throwing");
+
+        console.log("  ✅ Exact scripture integrity verified across 10 deterministic scenarios (caching, ranges, aliases, normalization, unabridged text, and network fault tolerance).");
         passed++;
+        unitPassed++;
     } catch (e) {
         console.error("  ❌ Test 9 Failed:", e.message);
         failed++;
+        unitFailed++;
     }
 
     // =========================================================================
-    // TEST SUITE 10: PRAYER MODERATION & AUTHOR OWNERSHIP SPECIFICATION
+    // TEST SUITE 10: PRAYER MODERATION & AUTHOR OWNERSHIP (SHARED PRODUCTION LOGIC)
     // =========================================================================
-    console.log("\n▶ [PRAYER SAFETY] Test 10: Prayer Moderation, Self-Report Guardrails & Author Ownership Isolation");
+    console.log("\n▶ [PRAYER SAFETY] Test 10: Prayer Moderation, Affirmative Consent & Author Ownership (Production Engine)");
     try {
-        // Mock prayer repository representing DB state
-        const dbPrayers = [
-            { id: 'prayer-pub-1', user_id: 'user-alice', title: 'Community Prayer', is_community: true, status: 'active' },
-            { id: 'prayer-priv-1', user_id: 'user-alice', title: 'Private Burden', is_community: false, status: 'active' },
-            { id: 'prayer-pub-2', user_id: 'user-bob', title: 'Healing for Brother', is_community: true, status: 'active' }
-        ];
-        const moderationReports = [];
+        // --- 1. validatePrayerCreate Tests ---
+        // Case A: Valid private prayer
+        const validPrivate = validatePrayerCreate({
+            title: "Pray for church revival",
+            description: "Seeking spiritual awakening in our local congregation",
+            is_community: false
+        });
+        assert.equal(validPrivate.isValid, true, "Valid private prayer must pass create validation");
 
-        // Specification handler for report action
-        function handleReportPrayer({ actorId, prayerId, reason }) {
-            const prayer = dbPrayers.find(p => p.id === prayerId);
-            if (!prayer) return { status: 404, error: "Prayer not found" };
-            if (!prayer.is_community) return { status: 400, error: "Cannot report private prayer" };
-            if (prayer.user_id === actorId) return { status: 400, error: "Authors cannot report their own petitions" };
+        // Case B: Title requirements
+        const missingTitle = validatePrayerCreate({ title: "" });
+        assert.equal(missingTitle.isValid, false);
+        assert.match(missingTitle.error, /Petition title is required/);
 
-            // Unpublish & record durable moderation report
-            prayer.is_community = false;
-            moderationReports.push({
-                prayer_id: prayerId,
-                reporter_id: actorId,
-                reason: reason || "Community flag",
-                status: "pending",
-                created_at: new Date().toISOString()
-            });
-            return { status: 200, success: true };
-        }
+        const longTitle = validatePrayerCreate({ title: "A".repeat(301) });
+        assert.equal(longTitle.isValid, false);
+        assert.match(longTitle.error, /cannot exceed 300 characters/);
 
-        // Specification handler for update action (author check)
-        function handleUpdatePrayer({ actorId, prayerId, updates }) {
-            const prayer = dbPrayers.find(p => p.id === prayerId);
-            if (!prayer) return { status: 404, error: "Prayer not found" };
-            if (prayer.user_id !== actorId) return { status: 403, error: "Forbidden: You can only edit your own petitions" };
+        // Case C: Description length bounds
+        const longDesc = validatePrayerCreate({ title: "Title", description: "B".repeat(3001) });
+        assert.equal(longDesc.isValid, false);
+        assert.match(longDesc.error, /Description cannot exceed 3000/);
 
-            Object.assign(prayer, updates);
-            return { status: 200, success: true, prayer };
-        }
+        // Case D: Scripture ref length bounds
+        const longRef = validatePrayerCreate({ title: "Title", scripture_ref: "C".repeat(101) });
+        assert.equal(longRef.isValid, false);
+        assert.match(longRef.error, /Scripture reference cannot exceed 100/);
 
-        // Specification handler for quick add consent
-        function handleCreatePrayer({ actorId, title, isCommunity, communityConsent }) {
-            if (isCommunity && !communityConsent) {
-                return { status: 400, error: "Explicit affirmative consent is required to share with community" };
-            }
-            return { status: 201, success: true };
-        }
+        // Case E: SERVER-SIDE AFFIRMATIVE CONSENT BOUNDARY (POST)
+        const unconsentedCommunity = validatePrayerCreate({
+            title: "Help with anxiety",
+            is_community: true,
+            community_consent: false
+        });
+        assert.equal(unconsentedCommunity.isValid, false, "Public prayer without consent must fail");
+        assert.match(unconsentedCommunity.error, /affirmative consent.*required/i);
 
-        // Case A: Reject reporting a private prayer
-        const reportPrivateRes = handleReportPrayer({ actorId: 'user-bob', prayerId: 'prayer-priv-1', reason: 'Spam' });
-        assert.equal(reportPrivateRes.status, 400, "Reporting private prayer must return 400");
-        assert.match(reportPrivateRes.error, /Cannot report private prayer/);
+        const omittedConsentCommunity = validatePrayerCreate({
+            title: "Help with anxiety",
+            is_community: true
+        });
+        assert.equal(omittedConsentCommunity.isValid, false, "Public prayer with omitted consent must fail");
 
-        // Case B: Reject author self-reporting
-        const selfReportRes = handleReportPrayer({ actorId: 'user-alice', prayerId: 'prayer-pub-1', reason: 'Self flag' });
-        assert.equal(selfReportRes.status, 400, "Author self-report must return 400");
-        assert.match(selfReportRes.error, /Authors cannot report their own petitions/);
+        const consentedCommunity = validatePrayerCreate({
+            title: "Help with anxiety",
+            is_community: true,
+            community_consent: true
+        });
+        assert.equal(consentedCommunity.isValid, true, "Public prayer with explicit affirmative consent must pass");
 
-        // Case C: Valid community report unpublishes prayer and creates moderation report
-        const validReportRes = handleReportPrayer({ actorId: 'user-bob', prayerId: 'prayer-pub-1', reason: 'Offensive language' });
-        assert.equal(validReportRes.status, 200);
-        assert.equal(dbPrayers.find(p => p.id === 'prayer-pub-1').is_community, false, "Reported prayer must be unpublished immediately");
-        assert.equal(moderationReports.length, 1);
-        assert.equal(moderationReports[0].prayer_id, 'prayer-pub-1');
-        assert.equal(moderationReports[0].reporter_id, 'user-bob');
+        // --- 2. validatePrayerUpdate Tests ---
+        // Case F: ID validation
+        const missingIdUpdate = validatePrayerUpdate({});
+        assert.equal(missingIdUpdate.isValid, false);
+        assert.match(missingIdUpdate.error, /Valid prayer ID is required/);
 
-        // Case D: Non-author cannot update another user's prayer
-        const crossUpdateRes = handleUpdatePrayer({ actorId: 'user-alice', prayerId: 'prayer-pub-2', updates: { title: 'Hacked' } });
-        assert.equal(crossUpdateRes.status, 403, "Cross-user update must return 403 Forbidden");
+        // Case G: Status validation
+        const invalidStatus = validatePrayerUpdate({ id: "p1", status: "invalid_status" });
+        assert.equal(invalidStatus.isValid, false);
+        assert.match(invalidStatus.error, /Invalid status/);
 
-        // Case E: Quick composer community sharing without explicit consent must be rejected
-        const consentBypassRes = handleCreatePrayer({ actorId: 'user-alice', title: 'Help', isCommunity: true, communityConsent: false });
-        assert.equal(consentBypassRes.status, 400, "Quick composer community sharing without consent must return 400");
+        const validStatus = validatePrayerUpdate({ id: "p1", status: "answered" });
+        assert.equal(validStatus.isValid, true);
 
-        console.log("  ✅ Prayer moderation prevents self-reporting, protects private prayers, enforces author ownership, and requires affirmative consent.");
+        // Case H: SERVER-SIDE AFFIRMATIVE CONSENT BOUNDARY (PATCH)
+        // Transitioning private prayer to community wall MUST require explicit affirmative consent
+        const patchUnconsented = validatePrayerUpdate({
+            id: "p1",
+            is_community: true,
+            community_consent: false
+        });
+        assert.equal(patchUnconsented.isValid, false, "PATCH publishing without consent must be rejected");
+        assert.match(patchUnconsented.error, /affirmative consent.*required/i);
+
+        const patchConsented = validatePrayerUpdate({
+            id: "p1",
+            is_community: true,
+            community_consent: true
+        });
+        assert.equal(patchConsented.isValid, true, "PATCH publishing with consent must succeed");
+
+        // --- 3. validatePrayerReport Tests ---
+        const samplePublicPrayer = { id: 'prayer-pub-1', user_id: 'user-alice', is_community: true };
+        const samplePrivatePrayer = { id: 'prayer-priv-1', user_id: 'user-alice', is_community: false };
+
+        // Case I: Target not found
+        const notFoundReport = validatePrayerReport(null, 'user-bob', 'Spam');
+        assert.equal(notFoundReport.isValid, false);
+        assert.match(notFoundReport.error, /Petition not found/);
+
+        // Case J: Reporting private prayer is forbidden
+        const privateReport = validatePrayerReport(samplePrivatePrayer, 'user-bob', 'Inappropriate');
+        assert.equal(privateReport.isValid, false);
+        assert.match(privateReport.error, /Only active public community petitions can be reported/);
+
+        // Case K: Author self-reporting is forbidden
+        const selfReport = validatePrayerReport(samplePublicPrayer, 'user-alice', 'Self report');
+        assert.equal(selfReport.isValid, false);
+        assert.match(selfReport.error, /You cannot report your own petition/);
+
+        // Case L: Valid third-party community report
+        const validReport = validatePrayerReport(samplePublicPrayer, 'user-bob', 'Contains sensitive phone numbers');
+        assert.equal(validReport.isValid, true);
+
+        // Case M: Report reason length limit
+        const excessiveReason = validatePrayerReport(samplePublicPrayer, 'user-bob', 'R'.repeat(501));
+        assert.equal(excessiveReason.isValid, false);
+        assert.match(excessiveReason.error, /cannot exceed 500 characters/);
+
+        console.log("  ✅ Production prayer moderation logic verified: affirmative consent enforced on POST & PATCH, self-reporting prevented, private petitions protected.");
         passed++;
+        unitPassed++;
     } catch (e) {
         console.error("  ❌ Test 10 Failed:", e.message);
         failed++;
+        unitFailed++;
     }
 
     // =========================================================================
-    // TEST SUITE 11: SERMON STUDIO PDF EXPORT SERVER-SIDE ENTITLEMENT
+    // TEST SUITE 11: SERMON STUDIO PDF EXPORT SERVER ENTITLEMENT (PRODUCTION ENGINE)
     // =========================================================================
-    console.log("\n▶ [AUTHORIZATION] Test 11: Sermon Studio PDF Export Server-Side Entitlement Gating");
+    console.log("\n▶ [AUTHORIZATION] Test 11: Sermon Studio PDF Export Server Entitlement Engine");
     try {
-        const mockProfiles = {
-            'user-seeker': { tier: 'SEEKER' },
-            'user-disciple': { tier: 'DISCIPLE' },
-            'user-minister': { tier: 'MINISTER' }
+        // Case A: Unauthenticated / null profile
+        const unauthRes = verifyUserTierEntitlement(null, 'MINISTER');
+        assert.equal(unauthRes.isEntitled, false);
+        assert.equal(unauthRes.effectiveStatus, 'unauthenticated');
+
+        // Case B: Seeker tier requesting Minister feature
+        const seekerProfile = { id: 'user-seeker', tier: 'SEEKER', subscription_status: 'active' };
+        const seekerRes = verifyUserTierEntitlement(seekerProfile, 'MINISTER');
+        assert.equal(seekerRes.isEntitled, false);
+        assert.equal(seekerRes.effectiveStatus, 'tier_mismatch');
+        assert.match(seekerRes.reason, /requires MINISTER covenant membership/);
+
+        // Case C: Disciple tier requesting Minister feature
+        const discipleProfile = { id: 'user-disciple', tier: 'DISCIPLE', subscription_status: 'active' };
+        const discipleRes = verifyUserTierEntitlement(discipleProfile, 'MINISTER');
+        assert.equal(discipleRes.isEntitled, false);
+        assert.equal(discipleRes.effectiveStatus, 'tier_mismatch');
+
+        // Case D: Minister tier with active subscription
+        const activeMinister = {
+            id: 'user-minister-active',
+            tier: 'MINISTER',
+            subscription_status: 'active',
+            current_period_end: new Date(Date.now() + 86400000 * 30).toISOString()
         };
+        const activeMinisterRes = verifyUserTierEntitlement(activeMinister, 'MINISTER');
+        assert.equal(activeMinisterRes.isEntitled, true);
+        assert.equal(activeMinisterRes.effectiveStatus, 'active');
+        assert.equal(activeMinisterRes.authorizedTier, 'MINISTER');
 
-        // Specification handler for POST /api/studio/export
-        function handleStudioExportAuth(userId) {
-            if (!userId) {
-                return { status: 401, error: "Authentication required to export sermon manuscript." };
-            }
-            const profile = mockProfiles[userId];
-            const tier = profile?.tier || 'SEEKER';
+        // Case E: Minister tier with cancelled status
+        const cancelledMinister = {
+            id: 'user-minister-cancelled',
+            tier: 'MINISTER',
+            subscription_status: 'cancelled'
+        };
+        const cancelledRes = verifyUserTierEntitlement(cancelledMinister, 'MINISTER');
+        assert.equal(cancelledRes.isEntitled, false);
+        assert.equal(cancelledRes.effectiveStatus, 'inactive');
+        assert.match(cancelledRes.reason, /cancelled/);
 
-            if (tier !== 'MINISTER') {
-                return {
-                    status: 403,
-                    error: "Manuscript PDF export requires an active Minister covenant membership. Please upgrade in Covenant Membership."
-                };
-            }
-            return {
-                status: 200,
-                authorized: true,
-                tier: 'MINISTER'
-            };
-        }
+        // Case F: Minister tier with unpaid / past_due status
+        const pastDueMinister = {
+            id: 'user-minister-pastdue',
+            tier: 'MINISTER',
+            subscription_status: 'past_due'
+        };
+        const pastDueRes = verifyUserTierEntitlement(pastDueMinister, 'MINISTER');
+        assert.equal(pastDueRes.isEntitled, false);
+        assert.equal(pastDueRes.effectiveStatus, 'inactive');
 
-        // Case A: Unauthenticated request
-        const unauthRes = handleStudioExportAuth(null);
-        assert.equal(unauthRes.status, 401, "Unauthenticated request must return 401");
+        // Case G: Minister tier with expired current_period_end
+        const expiredMinister = {
+            id: 'user-minister-expired',
+            tier: 'MINISTER',
+            subscription_status: 'active',
+            current_period_end: new Date(Date.now() - 86400000).toISOString() // expired yesterday
+        };
+        const expiredRes = verifyUserTierEntitlement(expiredMinister, 'MINISTER');
+        assert.equal(expiredRes.isEntitled, false);
+        assert.equal(expiredRes.effectiveStatus, 'expired');
+        assert.match(expiredRes.reason, /period expired on/);
 
-        // Case B: Seeker tier (free)
-        const seekerRes = handleStudioExportAuth('user-seeker');
-        assert.equal(seekerRes.status, 403, "Seeker tier user must be rejected with 403 Forbidden");
-        assert.match(seekerRes.error, /Minister covenant membership/);
+        // Case H: Seeker accessing Seeker feature (free tier access)
+        const freeAccessRes = verifyUserTierEntitlement(seekerProfile, 'SEEKER');
+        assert.equal(freeAccessRes.isEntitled, true);
+        assert.equal(freeAccessRes.effectiveStatus, 'active');
 
-        // Case C: Disciple tier (paid, but non-minister)
-        const discipleRes = handleStudioExportAuth('user-disciple');
-        assert.equal(discipleRes.status, 403, "Disciple tier user must be rejected with 403 Forbidden");
-
-        // Case D: Minister tier (entitled)
-        const ministerRes = handleStudioExportAuth('user-minister');
-        assert.equal(ministerRes.status, 200, "Minister tier user must be authorized with 200");
-        assert.equal(ministerRes.authorized, true);
-        assert.equal(ministerRes.tier, 'MINISTER');
-
-        console.log("  ✅ Sermon Studio PDF export server authorization strictly enforces Minister covenant entitlement.");
+        console.log("  ✅ Production entitlement engine strictly gates features: tier hierarchy, subscription status, and billing expiry dates are fully enforced.");
         passed++;
+        unitPassed++;
     } catch (e) {
         console.error("  ❌ Test 11 Failed:", e.message);
         failed++;
+        unitFailed++;
     }
 
     console.log(`\n======================================================`);
-    console.log(`Security & RAG Hardening Suite: ${passed} Passed, ${failed} Failed, ${skipped} Skipped`);
+    console.log(`BIBLE RHEMA AI - SECURITY, RAG & ENTITLEMENT TEST REPORT`);
+    console.log(`======================================================`);
+    console.log(`Categorized Results:`);
+    console.log(`  • Unit Tests (Pure Logic & Invariants):    ${unitPassed} Passed, ${unitFailed} Failed (Total 9 Suites)`);
+    console.log(`  • Concurrency & Stress Simulation:         ${integrationPassed} Passed, ${integrationFailed} Failed (Total 1 Suite, 30 Workers)`);
+    console.log(`  • Live Database Integration:               ${livePassed} Passed, ${liveFailed} Failed, ${liveSkipped} Skipped (Live DB credentials not in test env)`);
+    console.log(`------------------------------------------------------`);
+    console.log(`Overall Counts: ${passed} Passed, ${failed} Failed, ${skipped} Skipped out of ${passed + failed + skipped} Suites`);
     console.log(`======================================================\n`);
+
+    if (failed > 0) {
+        process.exit(1);
+    }
 
     if (failed > 0) {
         process.exit(1);

@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { recordUserActivity } from "@/lib/activity";
+import { verifyUserTierEntitlement } from "@/lib/billing/entitlements";
 
 export const dynamic = 'force-dynamic';
 
 /**
  * Server-Side Authorization Endpoint for Sermon Studio PDF Export.
- * Ensures only users with the verified 'MINISTER' tier in PostgreSQL can export manuscripts.
+ * Validates Minister tier covenant entitlement and active subscription lifecycle.
+ * Note: This endpoint authorizes client-side PDF manuscript export as a Minister covenant feature.
  */
 export async function POST(req: NextRequest) {
     try {
@@ -24,26 +26,33 @@ export async function POST(req: NextRequest) {
         const supabase = getSupabaseServerClient();
         const { data: profile, error: profileErr } = await supabase
             .from('profiles')
-            .select('tier')
+            .select('id, tier, subscription_status, current_period_end')
             .eq('id', userId)
             .maybeSingle();
 
         if (profileErr) {
-            console.error("Profile check error in studio/export:", profileErr);
-            return NextResponse.json({ success: false, error: profileErr.message }, { status: 500 });
-        }
-
-        const userTier = profile?.tier || 'SEEKER';
-
-        if (userTier !== 'MINISTER') {
+            console.error("Profile check database error in studio/export:", profileErr.message);
             return NextResponse.json({
                 success: false,
-                error: "Manuscript PDF export requires an active Minister covenant membership. Please upgrade in Covenant Membership."
+                error: "An unexpected database error occurred while verifying covenant entitlement."
+            }, { status: 500 });
+        }
+
+        const entitlement = verifyUserTierEntitlement(profile, 'MINISTER');
+
+        if (!entitlement.isEntitled) {
+            return NextResponse.json({
+                success: false,
+                error: entitlement.reason || "Manuscript PDF export requires an active Minister covenant membership. Please upgrade in Covenant Membership."
             }, { status: 403 });
         }
 
-        // Record user activity
-        await recordUserActivity(userId);
+        // Record user activity non-blockingly so telemetry failure does not reject authorized export
+        try {
+            await recordUserActivity(userId);
+        } catch (actErr: any) {
+            console.warn("Non-fatal activity record error during PDF export:", actErr?.message);
+        }
 
         return NextResponse.json({
             success: true,
@@ -52,10 +61,10 @@ export async function POST(req: NextRequest) {
             message: "Authorized for sermon manuscript PDF export."
         });
     } catch (error: any) {
-        console.error("Studio export authorization error:", error);
+        console.error("Studio export authorization unexpected error:", error);
         return NextResponse.json({
             success: false,
-            error: error?.message || "Internal server error"
+            error: "An unexpected error occurred while verifying manuscript export entitlement."
         }, { status: 500 });
     }
 }

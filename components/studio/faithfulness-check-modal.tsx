@@ -10,7 +10,7 @@ import { extractAllScriptureReferences } from "@/lib/bible/api-bible";
 export interface VerifiedReference {
     ref: string;
     normalizedRef?: string;
-    status: 'verified' | 'unverified' | 'pending';
+    status: 'verified' | 'partial' | 'translation-mismatch' | 'unverified' | 'error' | 'pending';
     translation?: string;
     requestedTranslation?: string;
     isTranslationMismatch?: boolean;
@@ -18,6 +18,7 @@ export interface VerifiedReference {
     source?: string;
     error?: string;
     verseRangeCovered?: boolean;
+    isExcerpt?: boolean;
     attributionNote?: string;
 }
 
@@ -77,16 +78,29 @@ export function FaithfulnessCheckModal({
                         if (res.ok) {
                             const json = await res.json();
                             if (json.success && json.data) {
+                                const isRangeCovered = json.data.verseRangeCovered !== false;
+                                const isMismatch = Boolean(json.data.isTranslationMismatch);
+
+                                let status: 'verified' | 'partial' | 'translation-mismatch' | 'unverified' = 'verified';
+                                if (!isRangeCovered) {
+                                    status = 'partial';
+                                } else if (isMismatch) {
+                                    status = 'translation-mismatch';
+                                } else {
+                                    status = 'verified';
+                                }
+
                                 return {
                                     ref: json.data.reference || ref,
                                     normalizedRef: json.data.normalizedReference,
-                                    status: 'verified',
+                                    status,
                                     translation: json.data.translation || 'Canonical',
                                     requestedTranslation: json.data.requestedTranslation,
-                                    isTranslationMismatch: json.data.isTranslationMismatch,
+                                    isTranslationMismatch: isMismatch,
                                     text: json.data.text,
                                     source: json.data.source,
-                                    verseRangeCovered: json.data.verseRangeCovered !== false,
+                                    verseRangeCovered: isRangeCovered,
+                                    isExcerpt: json.data.isExcerpt,
                                     attributionNote: json.data.attributionNote
                                 };
                             }
@@ -99,7 +113,7 @@ export function FaithfulnessCheckModal({
                     } catch (e: any) {
                         return {
                             ref,
-                            status: 'unverified',
+                            status: 'error',
                             error: e.message || 'Network error verifying passage.'
                         };
                     }
@@ -122,9 +136,12 @@ export function FaithfulnessCheckModal({
     }, [open, performVerification]);
 
     const verifiedCount = results.filter(r => r.status === 'verified').length;
+    const partialCount = results.filter(r => r.status === 'partial').length;
+    const mismatchCount = results.filter(r => r.status === 'translation-mismatch').length;
+    const unresolvedCount = results.filter(r => r.status === 'unverified' || r.status === 'error').length;
     const totalCount = results.length;
     const allVerified = totalCount > 0 && verifiedCount === totalCount;
-    const hasUnverified = results.some(r => r.status === 'unverified');
+    const hasUnresolved = unresolvedCount > 0 || partialCount > 0;
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -145,13 +162,29 @@ export function FaithfulnessCheckModal({
                             ) : allVerified ? (
                                 <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs flex items-center gap-1">
                                     <ShieldCheck className="w-3.5 h-3.5" />
-                                    {verifiedCount} of {totalCount} citations resolved in canon
+                                    {verifiedCount} of {totalCount} citations fully verified in canon
                                 </Badge>
                             ) : (
-                                <Badge className="bg-amber-500/15 text-amber-400 border border-amber-500/30 text-xs flex items-center gap-1">
-                                    <AlertTriangle className="w-3.5 h-3.5" />
-                                    {verifiedCount} of {totalCount} resolved · {totalCount - verifiedCount} unresolved
-                                </Badge>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                    <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[11px]">
+                                        {verifiedCount} verified
+                                    </Badge>
+                                    {partialCount > 0 && (
+                                        <Badge className="bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[11px]">
+                                            {partialCount} partial range
+                                        </Badge>
+                                    )}
+                                    {mismatchCount > 0 && (
+                                        <Badge className="bg-blue-500/15 text-blue-400 border border-blue-500/30 text-[11px]">
+                                            {mismatchCount} translation note
+                                        </Badge>
+                                    )}
+                                    {unresolvedCount > 0 && (
+                                        <Badge className="bg-rose-500/15 text-rose-400 border border-rose-500/30 text-[11px]">
+                                            {unresolvedCount} unresolved
+                                        </Badge>
+                                    )}
+                                </div>
                             )}
                         </div>
                         <Button
@@ -198,20 +231,26 @@ export function FaithfulnessCheckModal({
                             <div className="flex items-center justify-between">
                                 <span className="font-serif font-bold text-sm text-[#D4AF37]">{item.ref}</span>
                                 <div className="flex items-center gap-1.5">
-                                    {item.status === 'verified' ? (
-                                        <>
-                                            <Badge className="bg-emerald-500/10 text-emerald-400 border-0 text-[10px] font-mono">
-                                                <CheckCircle2 className="w-3 h-3 mr-1" />
-                                                Canonical Match ({item.translation || 'KJV'})
-                                            </Badge>
-                                            {item.isTranslationMismatch && (
-                                                <Badge className="bg-amber-500/10 text-amber-400 border-0 text-[9px] font-mono">
-                                                    Translation Note
-                                                </Badge>
-                                            )}
-                                        </>
-                                    ) : (
+                                    {item.status === 'verified' && (
+                                        <Badge className="bg-emerald-500/10 text-emerald-400 border-0 text-[10px] font-mono">
+                                            <CheckCircle2 className="w-3 h-3 mr-1" />
+                                            Canonical Match ({item.translation || 'ESV'})
+                                        </Badge>
+                                    )}
+                                    {item.status === 'partial' && (
                                         <Badge className="bg-amber-500/10 text-amber-400 border-0 text-[10px] font-mono">
+                                            <AlertTriangle className="w-3 h-3 mr-1" />
+                                            Partial Range ({item.translation || 'ESV'})
+                                        </Badge>
+                                    )}
+                                    {item.status === 'translation-mismatch' && (
+                                        <Badge className="bg-blue-500/10 text-blue-400 border-0 text-[10px] font-mono">
+                                            <Info className="w-3 h-3 mr-1" />
+                                            Translation Note ({item.translation}; req. {item.requestedTranslation || 'ESV'})
+                                        </Badge>
+                                    )}
+                                    {(item.status === 'unverified' || item.status === 'error') && (
+                                        <Badge className="bg-rose-500/10 text-rose-400 border-0 text-[10px] font-mono">
                                             <AlertCircle className="w-3 h-3 mr-1" />
                                             Unresolved Reference
                                         </Badge>
@@ -225,7 +264,13 @@ export function FaithfulnessCheckModal({
                                 </p>
                             )}
 
-                            {item.status === 'verified' && item.text ? (
+                            {item.isExcerpt && (
+                                <p className="text-[10px] text-blue-400/90 font-mono italic">
+                                    Note: This passage is preserved as an excerpt in the canonical record.
+                                </p>
+                            )}
+
+                            {(item.status === 'verified' || item.status === 'partial' || item.status === 'translation-mismatch') && item.text ? (
                                 <blockquote className="p-2.5 rounded bg-black/40 border-l-2 border-emerald-500 text-xs font-serif italic text-gray-300">
                                     "{item.text}"
                                 </blockquote>
@@ -243,14 +288,14 @@ export function FaithfulnessCheckModal({
                     <span className="flex items-center gap-1.5">
                         {allVerified ? (
                             <span className="text-emerald-400 flex items-center gap-1">
-                                <CheckCircle2 className="w-4 h-4" /> All citations resolved in canon
+                                <CheckCircle2 className="w-4 h-4" /> All citations fully verified in canon
                             </span>
-                        ) : hasUnverified ? (
+                        ) : hasUnresolved ? (
                             <span className="text-amber-400 flex items-center gap-1">
-                                <AlertTriangle className="w-4 h-4" /> Please review unresolved citations
+                                <AlertTriangle className="w-4 h-4" /> Citations require review (unresolved or partial ranges)
                             </span>
                         ) : (
-                            <span>Scripture Citation Engine</span>
+                            <span>{verifiedCount} citations fully verified</span>
                         )}
                     </span>
                     <Button onClick={() => onOpenChange(false)} className="bg-[#D4AF37] hover:bg-[#b5952f] text-black font-semibold text-xs">

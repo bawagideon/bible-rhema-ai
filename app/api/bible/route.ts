@@ -9,16 +9,27 @@ export async function GET(req: NextRequest) {
         const ref = searchParams.get('ref') || searchParams.get('query');
         const version = searchParams.get('version') || 'WEB';
 
-        if (!ref) {
-            return NextResponse.json({ success: false, error: "Scripture reference parameter 'ref' is required" }, { status: 400 });
+        if (!ref || typeof ref !== 'string') {
+            return NextResponse.json({ success: false, error: "Scripture reference parameter 'ref' is required." }, { status: 400 });
         }
 
-        const passage = await resolveScripturePassage(ref, version);
+        const cleanRef = ref.trim();
+        if (cleanRef.length === 0) {
+            return NextResponse.json({ success: false, error: "Scripture reference cannot be empty." }, { status: 400 });
+        }
+
+        if (cleanRef.length > 100) {
+            return NextResponse.json({ success: false, error: "Scripture reference exceeds maximum permitted length of 100 characters." }, { status: 400 });
+        }
+
+        const cleanVersion = (typeof version === 'string' ? version.trim().slice(0, 20) : 'WEB') || 'WEB';
+
+        const passage = await resolveScripturePassage(cleanRef, cleanVersion, { timeoutMs: 6000 });
 
         if (!passage) {
             return NextResponse.json({
                 success: false,
-                error: `Could not resolve passage for '${ref}'. Check reference syntax.`
+                error: `Could not resolve passage for '${cleanRef}'. Check book name and chapter:verse bounds.`
             }, { status: 404 });
         }
 
@@ -28,6 +39,9 @@ export async function GET(req: NextRequest) {
         });
     } catch (error: any) {
         console.error("Error in /api/bible:", error);
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+        return NextResponse.json({
+            success: false,
+            error: "An unexpected error occurred while resolving scripture citation."
+        }, { status: 500 });
     }
 }
