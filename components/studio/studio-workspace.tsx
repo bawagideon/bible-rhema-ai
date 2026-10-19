@@ -143,7 +143,7 @@ export function StudioWorkspace({
                         </div>
                     </div>
 
-                    {/* Dynamic Faithfulness Badge */}
+                    {/* Dynamic Scripture Citation Badge */}
                     <button
                         onClick={() => setShowFaithfulnessModal(true)}
                         className={cn(
@@ -154,15 +154,15 @@ export function StudioWorkspace({
                                     ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20"
                                     : "bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20"
                         )}
-                        title="Open Faithfulness Check"
+                        title="Open Scripture Citation & Reference Check"
                     >
                         <ShieldCheck className="w-3.5 h-3.5" />
                         <span>
                             {!faithfulnessStats
-                                ? "Faithfulness check"
+                                ? "Citation check"
                                 : faithfulnessStats.total === 0
                                     ? "0 citations"
-                                    : `${faithfulnessStats.verified}/${faithfulnessStats.total} verified`}
+                                    : `${faithfulnessStats.verified}/${faithfulnessStats.total} citations resolved`}
                         </span>
                     </button>
                 </div>

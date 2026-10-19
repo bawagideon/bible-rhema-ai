@@ -433,17 +433,23 @@ export function LeviteMixer() {
                     </div>
                 </div>
 
-                {/* FADER 2: SCRIPTURE VOICE (REAL LIVE NARRATION) */}
+                {/* FADER 2: SCRIPTURE VOICE (BROWSER WEB SPEECH API) */}
                 <div className="bg-[#15151a] border border-gray-800 rounded-2xl p-5 flex flex-col justify-between space-y-6">
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
                             <span className="text-xs font-serif font-bold uppercase tracking-wider text-blue-400 flex items-center gap-1.5">
-                                <Mic className="w-3.5 h-3.5" /> Fader 2: Scripture Voice
+                                <Mic className="w-3.5 h-3.5" /> Fader 2: Scripture Voice (Browser Speech)
                             </span>
                             <span className="text-xs font-mono font-semibold text-foreground">
                                 {Math.round(voiceVolume * 100)}%
                             </span>
                         </div>
+
+                        {!speechSupported && (
+                            <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-500/40 text-amber-300 text-[11px] leading-relaxed">
+                                Speech Synthesis is not supported in this browser. Please use a modern desktop or mobile browser to hear Scripture narrated.
+                            </div>
+                        )}
 
                         {/* Volume Slider */}
                         <div className="py-2">
@@ -453,6 +459,7 @@ export function LeviteMixer() {
                                 step={1}
                                 onValueChange={(val) => handleVoiceVolumeChange(val[0] / 100)}
                                 className="cursor-pointer"
+                                disabled={!speechSupported}
                             />
                         </div>
 
@@ -464,7 +471,8 @@ export function LeviteMixer() {
                             <select
                                 value={selectedPassageId}
                                 onChange={(e) => handlePassageSelect(e.target.value)}
-                                className="w-full text-xs p-2 rounded-lg bg-[#1b1b22] border border-gray-800 text-white font-medium focus:border-blue-500 focus:outline-none"
+                                disabled={!speechSupported}
+                                className="w-full text-xs p-2 rounded-lg bg-[#1b1b22] border border-gray-800 text-white font-medium focus:border-blue-500 focus:outline-none disabled:opacity-50"
                             >
                                 {SCRIPTURE_PASSAGES.map((p) => (
                                     <option key={p.id} value={p.id} className="bg-[#141416] text-white">
@@ -479,7 +487,7 @@ export function LeviteMixer() {
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-medium text-white">{selectedPassage.ref}</span>
                                 <Badge variant="outline" className="text-[9px] border-blue-500/30 text-blue-400 uppercase">
-                                    Web Speech API
+                                    Browser Web Speech
                                 </Badge>
                             </div>
                             <p className="text-[11px] text-muted-foreground line-clamp-3 italic">
@@ -489,6 +497,7 @@ export function LeviteMixer() {
                                 size="sm"
                                 variant="outline"
                                 onClick={toggleVoicePlay}
+                                disabled={!speechSupported}
                                 className={cn(
                                     "w-full text-xs h-8 border-gray-700 transition-colors",
                                     isVoicePlaying
@@ -514,12 +523,14 @@ export function LeviteMixer() {
                             <Switch
                                 checked={isDucking}
                                 onCheckedChange={handleDuckingToggle}
+                                disabled={!speechSupported}
                             />
                         </div>
                     </div>
 
-                    <div className="text-[10px] text-muted-foreground/70 italic border-t border-gray-800/60 pt-3">
-                        Local client-side speech synthesis with real-time pad ducking.
+                    <div className="text-[10px] text-muted-foreground/80 leading-relaxed border-t border-gray-800/60 pt-3 space-y-1">
+                        <p>Browser Web Speech synthesis with real-time pad ducking. Voice quality and accent depend on your OS/device.</p>
+                        <p className="text-gray-500 italic">Studio audio &amp; Bible Brain multi-voice narration are planned for a future release.</p>
                     </div>
                 </div>
 

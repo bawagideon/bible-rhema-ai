@@ -4,16 +4,21 @@ import { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ShieldCheck, CheckCircle2, AlertTriangle, RefreshCw, BookOpen, AlertCircle } from "lucide-react";
+import { ShieldCheck, CheckCircle2, AlertTriangle, RefreshCw, BookOpen, AlertCircle, Info } from "lucide-react";
 import { extractAllScriptureReferences } from "@/lib/bible/api-bible";
 
 export interface VerifiedReference {
     ref: string;
+    normalizedRef?: string;
     status: 'verified' | 'unverified' | 'pending';
     translation?: string;
+    requestedTranslation?: string;
+    isTranslationMismatch?: boolean;
     text?: string;
     source?: string;
     error?: string;
+    verseRangeCovered?: boolean;
+    attributionNote?: string;
 }
 
 interface FaithfulnessCheckModalProps {
@@ -74,10 +79,15 @@ export function FaithfulnessCheckModal({
                             if (json.success && json.data) {
                                 return {
                                     ref: json.data.reference || ref,
+                                    normalizedRef: json.data.normalizedReference,
                                     status: 'verified',
                                     translation: json.data.translation || 'Canonical',
+                                    requestedTranslation: json.data.requestedTranslation,
+                                    isTranslationMismatch: json.data.isTranslationMismatch,
                                     text: json.data.text,
-                                    source: json.data.source
+                                    source: json.data.source,
+                                    verseRangeCovered: json.data.verseRangeCovered !== false,
+                                    attributionNote: json.data.attributionNote
                                 };
                             }
                         }
@@ -135,12 +145,12 @@ export function FaithfulnessCheckModal({
                             ) : allVerified ? (
                                 <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs flex items-center gap-1">
                                     <ShieldCheck className="w-3.5 h-3.5" />
-                                    {verifiedCount} of {totalCount} references verified
+                                    {verifiedCount} of {totalCount} citations resolved in canon
                                 </Badge>
                             ) : (
                                 <Badge className="bg-amber-500/15 text-amber-400 border border-amber-500/30 text-xs flex items-center gap-1">
                                     <AlertTriangle className="w-3.5 h-3.5" />
-                                    {verifiedCount} of {totalCount} verified · {totalCount - verifiedCount} unresolved
+                                    {verifiedCount} of {totalCount} resolved · {totalCount - verifiedCount} unresolved
                                 </Badge>
                             )}
                         </div>
@@ -157,11 +167,19 @@ export function FaithfulnessCheckModal({
                     </div>
 
                     <DialogTitle className="font-serif text-2xl text-white">
-                        Manuscript Faithfulness Check
+                        Manuscript Scripture Citation & Reference Check
                     </DialogTitle>
-                    <DialogDescription className="text-gray-400 text-xs">
-                        Every scripture reference cited in your sermon is checked against canonical Bible manuscripts. Quoted verses are fetched directly from scripture text, never hallucinated by AI.
+                    <DialogDescription className="text-gray-400 text-xs leading-relaxed">
+                        Cross-checks every scripture reference cited in your manuscript against biblical manuscripts to verify passage existence and display exact canonical source text.
                     </DialogDescription>
+
+                    {/* Theological Disclaimer Notice */}
+                    <div className="p-2.5 rounded-lg bg-black/40 border border-gray-800 text-[11px] text-gray-400 flex items-start gap-2">
+                        <Info className="w-3.5 h-3.5 text-[#D4AF37] shrink-0 mt-0.5" />
+                        <span>
+                            <strong>Note on Faithfulness:</strong> Reference checking verifies citation existence and text accuracy; it does not replace pastoral hermeneutical exegesis, evaluate doctrinal orthodoxy, or judge sermon interpretation.
+                        </span>
+                    </div>
                 </DialogHeader>
 
                 <div className="space-y-4 py-3 max-h-[50vh] overflow-y-auto">
@@ -179,18 +197,33 @@ export function FaithfulnessCheckModal({
                         <div key={idx} className="p-4 rounded-xl bg-[#18181a] border border-gray-800 space-y-2">
                             <div className="flex items-center justify-between">
                                 <span className="font-serif font-bold text-sm text-[#D4AF37]">{item.ref}</span>
-                                {item.status === 'verified' ? (
-                                    <Badge className="bg-emerald-500/10 text-emerald-400 border-0 text-[10px] font-mono">
-                                        <CheckCircle2 className="w-3 h-3 mr-1" />
-                                        Verified Canonical ({item.translation || 'KJV'})
-                                    </Badge>
-                                ) : (
-                                    <Badge className="bg-amber-500/10 text-amber-400 border-0 text-[10px] font-mono">
-                                        <AlertCircle className="w-3 h-3 mr-1" />
-                                        Unverified Reference
-                                    </Badge>
-                                )}
+                                <div className="flex items-center gap-1.5">
+                                    {item.status === 'verified' ? (
+                                        <>
+                                            <Badge className="bg-emerald-500/10 text-emerald-400 border-0 text-[10px] font-mono">
+                                                <CheckCircle2 className="w-3 h-3 mr-1" />
+                                                Canonical Match ({item.translation || 'KJV'})
+                                            </Badge>
+                                            {item.isTranslationMismatch && (
+                                                <Badge className="bg-amber-500/10 text-amber-400 border-0 text-[9px] font-mono">
+                                                    Translation Note
+                                                </Badge>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <Badge className="bg-amber-500/10 text-amber-400 border-0 text-[10px] font-mono">
+                                            <AlertCircle className="w-3 h-3 mr-1" />
+                                            Unresolved Reference
+                                        </Badge>
+                                    )}
+                                </div>
                             </div>
+
+                            {item.attributionNote && (
+                                <p className="text-[10px] text-amber-400/90 font-mono italic">
+                                    {item.attributionNote}
+                                </p>
+                            )}
 
                             {item.status === 'verified' && item.text ? (
                                 <blockquote className="p-2.5 rounded bg-black/40 border-l-2 border-emerald-500 text-xs font-serif italic text-gray-300">
@@ -210,14 +243,14 @@ export function FaithfulnessCheckModal({
                     <span className="flex items-center gap-1.5">
                         {allVerified ? (
                             <span className="text-emerald-400 flex items-center gap-1">
-                                <CheckCircle2 className="w-4 h-4" /> Ready for the pulpit
+                                <CheckCircle2 className="w-4 h-4" /> All citations resolved in canon
                             </span>
                         ) : hasUnverified ? (
                             <span className="text-amber-400 flex items-center gap-1">
                                 <AlertTriangle className="w-4 h-4" /> Please review unresolved citations
                             </span>
                         ) : (
-                            <span>Scripture First Verification Engine</span>
+                            <span>Scripture Citation Engine</span>
                         )}
                     </span>
                     <Button onClick={() => onOpenChange(false)} className="bg-[#D4AF37] hover:bg-[#b5952f] text-black font-semibold text-xs">

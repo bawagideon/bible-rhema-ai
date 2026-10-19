@@ -43,18 +43,20 @@ export function CareMomentModal({ open, onOpenChange }: CareMomentModalProps) {
 
                     <div className="p-3 rounded-xl bg-[#1a1a1e] border border-gray-800 space-y-1">
                         <div className="flex items-center justify-between text-xs">
-                            <span className="font-semibold text-white">MANI Crisis Helpline</span>
-                            <span className="text-[#D4AF37] font-mono font-bold">0809 111 6264</span>
+                            <span className="font-semibold text-white">Lagos MiND Lifeline</span>
+                            <span className="text-[#D4AF37] font-mono font-bold text-[11px]">070 0000 6463</span>
                         </div>
-                        <p className="text-[11px] text-gray-400">Mentally Aware Nigeria Initiative (24/7 confidential support)</p>
+                        <p className="text-[11px] text-gray-400">
+                            Alt: 020 1410 6463 &bull; WhatsApp: 090 9000 6463 &bull; lagosmind.org
+                        </p>
                     </div>
 
                     <div className="p-3 rounded-xl bg-[#1a1a1e] border border-gray-800 space-y-1">
                         <div className="flex items-center justify-between text-xs">
-                            <span className="font-semibold text-white">Lagos State Lifeline</span>
-                            <span className="text-[#D4AF37] font-mono font-bold">0800 800 2000</span>
+                            <span className="font-semibold text-white">MANI Crisis Helpline</span>
+                            <span className="text-[#D4AF37] font-mono font-bold">0809 111 6264</span>
                         </div>
-                        <p className="text-[11px] text-gray-400">Lagos State Mental Health Crisis Support (Toll-Free)</p>
+                        <p className="text-[11px] text-gray-400">Mentally Aware Nigeria Initiative (confidential counselor support)</p>
                     </div>
                 </div>
 

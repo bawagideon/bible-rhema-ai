@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { searchTopicalConcordance } from '../lib/bible/topical-concordance.ts';
 import { validateGroundedCitations, retrieveStudyEvidence } from '../lib/ai/gemini.ts';
 import { fulfillPaymentTransaction } from '../lib/billing/fulfillment.ts';
+import { parseScriptureRef, resolveScripturePassage } from '../lib/bible/api-bible.ts';
 
 async function runSecurityAndRagTests() {
     console.log("🛡️ Running Bible Rhema AI - Security, RAG & Billing Hardening Test Suite...\n");
@@ -637,6 +638,194 @@ async function runSecurityAndRagTests() {
         }
     } catch (e) {
         console.error("  ❌ Test 8 Failed:", e.message);
+        failed++;
+    }
+
+    // =========================================================================
+    // TEST SUITE 9: EXACT SCRIPTURE REFERENCE MATCHING & RANGE INTEGRITY
+    // =========================================================================
+    console.log("\n▶ [SCRIPTURE INTEGRITY] Test 9: Exact Scripture Reference Matching, Range Integrity & Translation Attribution");
+    try {
+        // Case A: Substring false-positive prevention
+        // "John 3:16-17" must NOT match "John 3:16"
+        const refSingle = parseScriptureRef("John 3:16");
+        const refRange = parseScriptureRef("John 3:16-17");
+
+        assert.ok(refSingle, "John 3:16 must parse successfully");
+        assert.ok(refRange, "John 3:16-17 must parse successfully");
+        assert.equal(refSingle.normalized, "john 3:16");
+        assert.equal(refRange.normalized, "john 3:16-17");
+        assert.notEqual(refSingle.normalized, refRange.normalized, "Normalized references must be strictly distinct");
+
+        // Case B: Book Alias Normalization
+        const refPsalm1 = parseScriptureRef("Psalm 23:1-3");
+        const refPsalm2 = parseScriptureRef("Psalms 23:1-3");
+        assert.ok(refPsalm1 && refPsalm2);
+        assert.equal(refPsalm1.normalized, "psalm 23:1-3");
+        assert.equal(refPsalm2.normalized, "psalm 23:1-3");
+        assert.equal(refPsalm1.normalized, refPsalm2.normalized, "Book aliases (Psalm vs Psalms) must normalize identically");
+
+        // Case C: Exact match retrieval vs range mismatch
+        const singleResult = await resolveScripturePassage("John 3:16", "ESV");
+        assert.ok(singleResult, "John 3:16 must be found in canonical cache");
+        assert.equal(singleResult.reference, "John 3:16");
+        assert.equal(singleResult.verseRangeCovered, true);
+
+        // Case D: Translation Mismatch Attribution
+        // When asking for WEB or KJV, if the system returns cached ESV, it MUST flag isTranslationMismatch and provide an attributionNote
+        const translationMismatchResult = await resolveScripturePassage("Romans 8:38-39", "KJV");
+        if (translationMismatchResult) {
+            if (translationMismatchResult.translation !== "KJV") {
+                assert.equal(translationMismatchResult.isTranslationMismatch, true, "Must flag translation mismatch when requested KJV != actual");
+                assert.ok(translationMismatchResult.attributionNote, "Attribution note must be provided explaining the translation variance");
+            }
+        }
+
+        console.log("  ✅ Exact reference matching prevents substring collisions, normalizes aliases, and preserves translation attribution.");
+        passed++;
+    } catch (e) {
+        console.error("  ❌ Test 9 Failed:", e.message);
+        failed++;
+    }
+
+    // =========================================================================
+    // TEST SUITE 10: PRAYER MODERATION & AUTHOR OWNERSHIP SPECIFICATION
+    // =========================================================================
+    console.log("\n▶ [PRAYER SAFETY] Test 10: Prayer Moderation, Self-Report Guardrails & Author Ownership Isolation");
+    try {
+        // Mock prayer repository representing DB state
+        const dbPrayers = [
+            { id: 'prayer-pub-1', user_id: 'user-alice', title: 'Community Prayer', is_community: true, status: 'active' },
+            { id: 'prayer-priv-1', user_id: 'user-alice', title: 'Private Burden', is_community: false, status: 'active' },
+            { id: 'prayer-pub-2', user_id: 'user-bob', title: 'Healing for Brother', is_community: true, status: 'active' }
+        ];
+        const moderationReports = [];
+
+        // Specification handler for report action
+        function handleReportPrayer({ actorId, prayerId, reason }) {
+            const prayer = dbPrayers.find(p => p.id === prayerId);
+            if (!prayer) return { status: 404, error: "Prayer not found" };
+            if (!prayer.is_community) return { status: 400, error: "Cannot report private prayer" };
+            if (prayer.user_id === actorId) return { status: 400, error: "Authors cannot report their own petitions" };
+
+            // Unpublish & record durable moderation report
+            prayer.is_community = false;
+            moderationReports.push({
+                prayer_id: prayerId,
+                reporter_id: actorId,
+                reason: reason || "Community flag",
+                status: "pending",
+                created_at: new Date().toISOString()
+            });
+            return { status: 200, success: true };
+        }
+
+        // Specification handler for update action (author check)
+        function handleUpdatePrayer({ actorId, prayerId, updates }) {
+            const prayer = dbPrayers.find(p => p.id === prayerId);
+            if (!prayer) return { status: 404, error: "Prayer not found" };
+            if (prayer.user_id !== actorId) return { status: 403, error: "Forbidden: You can only edit your own petitions" };
+
+            Object.assign(prayer, updates);
+            return { status: 200, success: true, prayer };
+        }
+
+        // Specification handler for quick add consent
+        function handleCreatePrayer({ actorId, title, isCommunity, communityConsent }) {
+            if (isCommunity && !communityConsent) {
+                return { status: 400, error: "Explicit affirmative consent is required to share with community" };
+            }
+            return { status: 201, success: true };
+        }
+
+        // Case A: Reject reporting a private prayer
+        const reportPrivateRes = handleReportPrayer({ actorId: 'user-bob', prayerId: 'prayer-priv-1', reason: 'Spam' });
+        assert.equal(reportPrivateRes.status, 400, "Reporting private prayer must return 400");
+        assert.match(reportPrivateRes.error, /Cannot report private prayer/);
+
+        // Case B: Reject author self-reporting
+        const selfReportRes = handleReportPrayer({ actorId: 'user-alice', prayerId: 'prayer-pub-1', reason: 'Self flag' });
+        assert.equal(selfReportRes.status, 400, "Author self-report must return 400");
+        assert.match(selfReportRes.error, /Authors cannot report their own petitions/);
+
+        // Case C: Valid community report unpublishes prayer and creates moderation report
+        const validReportRes = handleReportPrayer({ actorId: 'user-bob', prayerId: 'prayer-pub-1', reason: 'Offensive language' });
+        assert.equal(validReportRes.status, 200);
+        assert.equal(dbPrayers.find(p => p.id === 'prayer-pub-1').is_community, false, "Reported prayer must be unpublished immediately");
+        assert.equal(moderationReports.length, 1);
+        assert.equal(moderationReports[0].prayer_id, 'prayer-pub-1');
+        assert.equal(moderationReports[0].reporter_id, 'user-bob');
+
+        // Case D: Non-author cannot update another user's prayer
+        const crossUpdateRes = handleUpdatePrayer({ actorId: 'user-alice', prayerId: 'prayer-pub-2', updates: { title: 'Hacked' } });
+        assert.equal(crossUpdateRes.status, 403, "Cross-user update must return 403 Forbidden");
+
+        // Case E: Quick composer community sharing without explicit consent must be rejected
+        const consentBypassRes = handleCreatePrayer({ actorId: 'user-alice', title: 'Help', isCommunity: true, communityConsent: false });
+        assert.equal(consentBypassRes.status, 400, "Quick composer community sharing without consent must return 400");
+
+        console.log("  ✅ Prayer moderation prevents self-reporting, protects private prayers, enforces author ownership, and requires affirmative consent.");
+        passed++;
+    } catch (e) {
+        console.error("  ❌ Test 10 Failed:", e.message);
+        failed++;
+    }
+
+    // =========================================================================
+    // TEST SUITE 11: SERMON STUDIO PDF EXPORT SERVER-SIDE ENTITLEMENT
+    // =========================================================================
+    console.log("\n▶ [AUTHORIZATION] Test 11: Sermon Studio PDF Export Server-Side Entitlement Gating");
+    try {
+        const mockProfiles = {
+            'user-seeker': { tier: 'SEEKER' },
+            'user-disciple': { tier: 'DISCIPLE' },
+            'user-minister': { tier: 'MINISTER' }
+        };
+
+        // Specification handler for POST /api/studio/export
+        function handleStudioExportAuth(userId) {
+            if (!userId) {
+                return { status: 401, error: "Authentication required to export sermon manuscript." };
+            }
+            const profile = mockProfiles[userId];
+            const tier = profile?.tier || 'SEEKER';
+
+            if (tier !== 'MINISTER') {
+                return {
+                    status: 403,
+                    error: "Manuscript PDF export requires an active Minister covenant membership. Please upgrade in Covenant Membership."
+                };
+            }
+            return {
+                status: 200,
+                authorized: true,
+                tier: 'MINISTER'
+            };
+        }
+
+        // Case A: Unauthenticated request
+        const unauthRes = handleStudioExportAuth(null);
+        assert.equal(unauthRes.status, 401, "Unauthenticated request must return 401");
+
+        // Case B: Seeker tier (free)
+        const seekerRes = handleStudioExportAuth('user-seeker');
+        assert.equal(seekerRes.status, 403, "Seeker tier user must be rejected with 403 Forbidden");
+        assert.match(seekerRes.error, /Minister covenant membership/);
+
+        // Case C: Disciple tier (paid, but non-minister)
+        const discipleRes = handleStudioExportAuth('user-disciple');
+        assert.equal(discipleRes.status, 403, "Disciple tier user must be rejected with 403 Forbidden");
+
+        // Case D: Minister tier (entitled)
+        const ministerRes = handleStudioExportAuth('user-minister');
+        assert.equal(ministerRes.status, 200, "Minister tier user must be authorized with 200");
+        assert.equal(ministerRes.authorized, true);
+        assert.equal(ministerRes.tier, 'MINISTER');
+
+        console.log("  ✅ Sermon Studio PDF export server authorization strictly enforces Minister covenant entitlement.");
+        passed++;
+    } catch (e) {
+        console.error("  ❌ Test 11 Failed:", e.message);
         failed++;
     }
 

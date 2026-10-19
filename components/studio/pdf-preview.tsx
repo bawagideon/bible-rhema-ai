@@ -26,6 +26,7 @@ export function LivePreview({ data }: LivePreviewProps) {
     }, [pdfExportTimestamp]);
 
     const handleDownload = async () => {
+        // 1. Fast client-side pre-check
         if (userTier !== 'MINISTER') {
             toast.error("Manuscript PDF export requires an active Minister subscription.");
             setShowUpgradeDialog(true);
@@ -34,10 +35,30 @@ export function LivePreview({ data }: LivePreviewProps) {
 
         if (!paperRef.current) return;
         setIsGenerating(true);
-        const toastId = toast.loading("Generating PDF...");
+        const toastId = toast.loading("Verifying Minister entitlement & generating PDF...");
 
         try {
-            // Dynamic import to ensure client-side execution
+            // 2. Authoritative Server-Side Tier Verification
+            const authRes = await fetch('/api/studio/export', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (!authRes.ok) {
+                const authData = await authRes.json().catch(() => ({}));
+                if (authRes.status === 403) {
+                    toast.error(authData.error || "Manuscript PDF export requires an active Minister subscription.", { id: toastId });
+                    setShowUpgradeDialog(true);
+                    return;
+                }
+                if (authRes.status === 401) {
+                    toast.error("Please sign in to export sermon manuscripts.", { id: toastId });
+                    return;
+                }
+                throw new Error(authData.error || "Server export entitlement check failed.");
+            }
+
+            // 3. Dynamic import to ensure client-side execution
             const html2pdf = (await import('html2pdf.js')).default;
 
             const element = paperRef.current;
@@ -51,9 +72,9 @@ export function LivePreview({ data }: LivePreviewProps) {
 
             await html2pdf().set(opt).from(element).save();
             toast.success("PDF Downloaded", { id: toastId });
-        } catch (error) {
+        } catch (error: any) {
             console.error("PDF Generation failed", error);
-            toast.error("Failed to generate PDF", { id: toastId });
+            toast.error(error?.message || "Failed to generate PDF", { id: toastId });
         } finally {
             setIsGenerating(false);
         }

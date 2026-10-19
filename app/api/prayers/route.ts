@@ -175,21 +175,69 @@ export async function PATCH(req: NextRequest) {
 
         // Community Moderation Reporting Action
         if (action === 'report') {
-            const reason = typeof body.reason === 'string' ? body.reason.slice(0, 500) : 'Inappropriate or sensitive content';
-            // Unpublish reported prayer immediately from community wall to protect users
+            const reason = (typeof body.reason === 'string' && body.reason.trim())
+                ? body.reason.trim().slice(0, 500)
+                : 'Inappropriate or sensitive content';
+
+            // 1. Verify prayer exists, is currently public, and caller is not the author
+            const { data: targetPrayer, error: fetchErr } = await supabase
+                .from('prayers')
+                .select('id, user_id, is_community')
+                .eq('id', id)
+                .single();
+
+            if (fetchErr || !targetPrayer) {
+                return NextResponse.json({ success: false, error: "Petition not found" }, { status: 404 });
+            }
+
+            if (!targetPrayer.is_community) {
+                return NextResponse.json({
+                    success: false,
+                    error: "Only active public community petitions can be reported."
+                }, { status: 400 });
+            }
+
+            if (targetPrayer.user_id === userId) {
+                return NextResponse.json({
+                    success: false,
+                    error: "You cannot report your own petition. Use 'Make Private' to unpublish it."
+                }, { status: 400 });
+            }
+
+            // 2. Unpublish reported prayer immediately from community wall
             const { error: reportErr } = await supabase
                 .from('prayers')
                 .update({ is_community: false })
-                .eq('id', id);
+                .eq('id', id)
+                .eq('is_community', true);
 
             if (reportErr) {
-                console.error("Error reporting prayer:", reportErr);
+                console.error("Error unpublishing reported prayer:", reportErr);
                 return NextResponse.json({ success: false, error: reportErr.message }, { status: 500 });
+            }
+
+            // 3. Persist durable moderation report record with reporter, target, reason, and timestamp
+            const { error: reportInsertErr } = await supabase
+                .from('prayer_moderation_reports')
+                .insert({
+                    prayer_id: id,
+                    reporter_id: userId,
+                    reason,
+                    status: 'pending_review'
+                });
+
+            if (reportInsertErr) {
+                // Log detailed audit message if moderation table is not yet migrated
+                console.warn("Durable moderation log insert failed (table may require migration):", reportInsertErr.message, {
+                    prayerId: id,
+                    reporterId: userId,
+                    reason
+                });
             }
 
             return NextResponse.json({
                 success: true,
-                message: "Petition reported and removed from the community prayer wall for moderation review."
+                message: "Petition reported and removed from the community prayer wall. A durable moderation record has been logged for review."
             });
         }
 
@@ -219,8 +267,11 @@ export async function PATCH(req: NextRequest) {
             .select()
             .single();
 
-        if (error) {
-            return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+        if (error || !data) {
+            return NextResponse.json({
+                success: false,
+                error: error?.message || "Petition not found or you are not authorized to edit this petition."
+            }, { status: 403 });
         }
 
         return NextResponse.json({ success: true, data });

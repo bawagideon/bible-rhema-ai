@@ -241,6 +241,7 @@ export default function AltarPage() {
     const [quickTitle, setQuickTitle] = useState("");
     const [quickScripture, setQuickScripture] = useState("");
     const [quickIsCommunity, setQuickIsCommunity] = useState(false);
+    const [quickCommunityConsent, setQuickCommunityConsent] = useState(false);
     const [isQuickSubmitting, setIsQuickSubmitting] = useState(false);
 
     const handleQuickAddPetition = async () => {
@@ -248,6 +249,12 @@ export default function AltarPage() {
             toast.error("Please enter a petition");
             return;
         }
+
+        if (quickIsCommunity && !quickCommunityConsent) {
+            toast.error("Please confirm your explicit consent to publish to the community prayer wall.");
+            return;
+        }
+
         setIsQuickSubmitting(true);
         try {
             const res = await fetch('/api/prayers', {
@@ -257,7 +264,7 @@ export default function AltarPage() {
                     title: quickTitle.trim(),
                     scripture_ref: quickScripture.trim() || undefined,
                     is_community: quickIsCommunity,
-                    community_consent: quickIsCommunity,
+                    community_consent: quickIsCommunity ? quickCommunityConsent : false,
                     author_name: user?.firstName || 'Fellow Believer'
                 })
             });
@@ -267,6 +274,7 @@ export default function AltarPage() {
                 setQuickTitle("");
                 setQuickScripture("");
                 setQuickIsCommunity(false);
+                setQuickCommunityConsent(false);
                 fetchAllData();
             } else {
                 toast.error(data.error || "Failed to place prayer");
@@ -445,7 +453,11 @@ export default function AltarPage() {
                                                 <Checkbox
                                                     id="quick-comm"
                                                     checked={quickIsCommunity}
-                                                    onCheckedChange={(c) => setQuickIsCommunity(Boolean(c))}
+                                                    onCheckedChange={(c) => {
+                                                        const isChecked = Boolean(c);
+                                                        setQuickIsCommunity(isChecked);
+                                                        if (!isChecked) setQuickCommunityConsent(false);
+                                                    }}
                                                 />
                                                 <label htmlFor="quick-comm" className="text-xs text-gray-400 cursor-pointer">
                                                     Share with community
@@ -454,13 +466,28 @@ export default function AltarPage() {
                                             <Button
                                                 size="sm"
                                                 onClick={handleQuickAddPetition}
-                                                disabled={isQuickSubmitting || !quickTitle.trim()}
+                                                disabled={isQuickSubmitting || !quickTitle.trim() || (quickIsCommunity && !quickCommunityConsent)}
                                                 className="bg-[#D4AF37] text-black hover:bg-[#b5952f] text-xs font-semibold px-4"
                                             >
                                                 {isQuickSubmitting ? "Adding..." : "+ Add petition"}
                                             </Button>
                                         </div>
                                     </div>
+
+                                    {/* Explicit Affirmative Consent Requirement for Quick Composer */}
+                                    {quickIsCommunity && (
+                                        <div className="p-3 rounded-xl bg-amber-950/20 border border-amber-500/30 flex items-start gap-2.5">
+                                            <Checkbox
+                                                id="quick-consent"
+                                                checked={quickCommunityConsent}
+                                                onCheckedChange={(c) => setQuickCommunityConsent(Boolean(c))}
+                                                className="mt-0.5"
+                                            />
+                                            <label htmlFor="quick-consent" className="text-xs text-amber-200/90 leading-tight cursor-pointer">
+                                                I understand and affirmatively consent that this petition will be visible to all believers on the public Community Prayer Wall.
+                                            </label>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Active Petitions List */}
@@ -632,7 +659,7 @@ export default function AltarPage() {
                                     If you are in danger or crisis
                                 </span>
                                 <p className="text-rose-200/90 leading-relaxed text-[11px]">
-                                    If you are experiencing overwhelming distress, thoughts of self-harm, or an acute crisis, please reach out for immediate professional care. In Nigeria, dial <strong>112</strong> (National Emergency Toll-Free) or reach mental health lifelines: <strong>MANI (0809 111 6264)</strong> or Lagos State Lifeline <strong>(0800 800 2000)</strong>. You are deeply loved by God and not alone.
+                                    If you are experiencing overwhelming distress, thoughts of self-harm, or an acute crisis, please reach out for immediate professional care. In Nigeria, dial <strong>112</strong> (National Emergency Toll-Free) or reach mental health lifelines: <strong>Lagos MiND Lifeline (070 0000 6463 / 020 1410 6463 / WhatsApp 090 9000 6463 &bull; lagosmind.org)</strong> or <strong>MANI (0809 111 6264)</strong>. You are deeply loved by God and not alone.
                                 </p>
                             </div>
                         </div>
