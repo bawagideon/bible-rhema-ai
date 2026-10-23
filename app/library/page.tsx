@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { LibraryLoadingSkeleton, EmptyFirstVisit, ConfirmDeleteDialog } from "@/components/system";
 
 export default function LibraryPage() {
     const router = useRouter();
@@ -32,6 +33,18 @@ export default function LibraryPage() {
     const [selectedBook, setSelectedBook] = useState("all");
     const [sortBy, setSortBy] = useState("recent");
     const [activeTab, setActiveTab] = useState("all");
+
+    const [deleteDialog, setDeleteDialog] = useState<{
+        open: boolean;
+        type: 'study' | 'journal' | 'sermon';
+        id: string;
+        title: string;
+    }>({
+        open: false,
+        type: 'study',
+        id: '',
+        title: '',
+    });
 
     const [editingItem, setEditingItem] = useState<{
         type: 'study' | 'journal';
@@ -236,6 +249,26 @@ export default function LibraryPage() {
         return (a.title || '').localeCompare(b.title || '');
     });
 
+    const handleConfirmDelete = async () => {
+        if (deleteDialog.type === 'study') await handleDeleteStudy(deleteDialog.id);
+        else if (deleteDialog.type === 'journal') await handleDeleteJournal(deleteDialog.id);
+        else if (deleteDialog.type === 'sermon') await handleDeleteSermon(deleteDialog.id);
+    };
+
+    if (loading) {
+        return (
+            <ShellLayout>
+                <div className="flex-1 space-y-8 p-4 md:p-8 pt-6 max-w-6xl mx-auto pb-28 font-sans">
+                    <div className="flex flex-col gap-2 border-b border-white/10 pb-6">
+                        <h1 className="font-serif text-3xl font-bold tracking-tight text-white">Your Library</h1>
+                        <p className="text-gray-400 text-xs md:text-sm">Loading your saved studies, manuscripts, and notes...</p>
+                    </div>
+                    <LibraryLoadingSkeleton />
+                </div>
+            </ShellLayout>
+        );
+    }
+
     return (
         <ShellLayout>
             <div className="flex-1 space-y-8 p-4 md:p-8 pt-6 max-w-6xl mx-auto pb-28 font-sans">
@@ -368,13 +401,12 @@ export default function LibraryPage() {
                     {/* ALL ITEMS VIEW */}
                     <TabsContent value="all" className="mt-6 space-y-4">
                         {allItems.length === 0 ? (
-                            <div className="text-center py-16 p-8 border border-gray-800/80 rounded-2xl bg-[#121212] space-y-3">
-                                <Library className="w-10 h-10 text-gray-500 mx-auto" />
-                                <h3 className="font-serif text-lg font-semibold text-white">Your Theological Library is Ready</h3>
-                                <p className="text-xs text-gray-400 max-w-md mx-auto">
-                                    Studies saved in SpiritOS, sermon drafts in Studio, and reflections from the Altar will appear here.
-                                </p>
-                            </div>
+                            <EmptyFirstVisit
+                                title="Your library is waiting"
+                                description="Save a study, write a note or add a prayer and it will appear here."
+                                actionText="Start your first study"
+                                actionHref="/spirit-os"
+                            />
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {allItems.map((item: any) => (
@@ -485,7 +517,12 @@ export default function LibraryPage() {
                                                     <Pencil className="w-4 h-4" />
                                                 </button>
                                                 <button
-                                                    onClick={() => handleDeleteStudy(study.id)}
+                                                    onClick={() => setDeleteDialog({
+                                                        open: true,
+                                                        type: 'study',
+                                                        id: study.id,
+                                                        title: study.title || 'Expository Study',
+                                                    })}
                                                     className="text-gray-500 hover:text-rose-400 transition-colors text-xs"
                                                     title="Delete study"
                                                 >
@@ -538,7 +575,12 @@ export default function LibraryPage() {
                                         </div>
                                         <div className="pt-2 border-t border-gray-800/60 flex justify-between items-center">
                                             <button
-                                                onClick={() => handleDeleteSermon(sermon.id)}
+                                                onClick={() => setDeleteDialog({
+                                                    open: true,
+                                                    type: 'sermon',
+                                                    id: sermon.id,
+                                                    title: sermon.title || 'Sermon Draft',
+                                                })}
                                                 className="text-gray-500 hover:text-rose-400 transition-colors text-xs"
                                                 title="Delete sermon"
                                             >
@@ -592,7 +634,12 @@ export default function LibraryPage() {
                                                     <Pencil className="w-4 h-4" />
                                                 </button>
                                                 <button
-                                                    onClick={() => handleDeleteJournal(entry.id)}
+                                                    onClick={() => setDeleteDialog({
+                                                        open: true,
+                                                        type: 'journal',
+                                                        id: entry.id,
+                                                        title: entry.title || 'Journal Entry',
+                                                    })}
                                                     className="text-gray-500 hover:text-rose-400 transition-colors text-xs"
                                                     title="Delete entry"
                                                 >
@@ -707,6 +754,16 @@ export default function LibraryPage() {
                     </DialogContent>
                 </Dialog>
             </div>
+
+            {/* Confirm Before Deleting Dialog */}
+            <ConfirmDeleteDialog
+                open={deleteDialog.open}
+                onOpenChange={(open) => setDeleteDialog(prev => ({ ...prev, open }))}
+                title={`Delete this ${deleteDialog.type}?`}
+                itemName={deleteDialog.title}
+                itemType={deleteDialog.type}
+                onConfirm={handleConfirmDelete}
+            />
         </ShellLayout>
     );
 }

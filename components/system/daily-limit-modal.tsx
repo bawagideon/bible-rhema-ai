@@ -1,71 +1,96 @@
 "use client";
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Lock, Sparkles, ArrowRight, Clock } from "lucide-react";
+import React from "react";
 import { useRouter } from "next/navigation";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
-interface DailyLimitModalProps {
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
-    used?: number;
-    total?: number;
+interface DailyLimitProps {
+  used?: number;
+  total?: number;
+  onSeePlans?: () => void;
+  onOpenSanctuary?: () => void;
 }
 
-export function DailyLimitModal({ open, onOpenChange, used = 5, total = 5 }: DailyLimitModalProps) {
-    const router = useRouter();
+export function DailyLimitCard({
+  used = 5,
+  total = 5,
+  onSeePlans,
+  onOpenSanctuary,
+}: DailyLimitProps) {
+  const router = useRouter();
 
-    return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-md bg-[#141416] border-[#D4AF37]/40 text-white p-6 md:p-8 font-sans text-center">
-                <DialogHeader className="space-y-3">
-                    <div className="w-12 h-12 rounded-full bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30 flex items-center justify-center mx-auto">
-                        <Lock className="w-6 h-6" />
-                    </div>
+  const handleSeePlans = () => {
+    if (onSeePlans) onSeePlans();
+    else router.push("/pricing");
+  };
 
-                    <div className="space-y-1">
-                        <Badge variant="outline" className="text-[10px] border-[#D4AF37]/40 text-[#D4AF37] font-mono uppercase">
-                            Seeker Daily Quota Reached ({used}/{total})
-                        </Badge>
-                        <DialogTitle className="font-serif text-2xl text-white">
-                            Daily SpiritOS Limit Reached
-                        </DialogTitle>
-                    </div>
+  const handleOpenSanctuary = () => {
+    if (onOpenSanctuary) onOpenSanctuary();
+    else router.push("/sanctuary");
+  };
 
-                    <DialogDescription className="text-gray-400 text-xs leading-relaxed">
-                        Seeker plans include 5 SpiritOS inquiries per day. Your quota will refresh tonight at midnight. Upgrade to Minister for unlimited inquiries, sermon manuscripts, and pulpit teleprompter mode.
-                    </DialogDescription>
-                </DialogHeader>
+  return (
+    <div className="card p-6 flex flex-col gap-3.5 border-[rgba(243,229,171,0.18)]">
+      <div className="flex flex-col gap-3 items-start text-left">
+        <span className="eyebrow">Daily limit reached</span>
+        <h3 className="serif text-[22px] font-semibold text-[#F8F9FA] leading-[1.3] m-0">
+          You have used today’s {used || total} studies
+        </h3>
+        <p className="muted text-[14px] leading-[1.6] m-0">
+          Your limit resets at midnight. Meanwhile, the Scripture reader, Sanctuary and your Altar are all open.
+        </p>
+        <div className="flex gap-2 flex-wrap pt-2">
+          <button
+            type="button"
+            onClick={handleSeePlans}
+            className="btn btn-p"
+          >
+            See plans
+          </button>
+          <button
+            type="button"
+            onClick={handleOpenSanctuary}
+            className="btn btn-q"
+          >
+            Open Sanctuary
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-                <div className="p-3.5 rounded-xl bg-black/40 border border-gray-800 text-xs text-gray-300 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-gray-400">
-                        <Clock className="w-3.5 h-3.5 text-[#D4AF37]" /> Quota resets
-                    </span>
-                    <span className="font-mono text-white">Midnight WAT (12:00 AM)</span>
-                </div>
+interface DailyLimitModalProps extends DailyLimitProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
 
-                <DialogFooter className="flex-col sm:flex-col gap-2 pt-2">
-                    <Button
-                        onClick={() => {
-                            onOpenChange(false);
-                            router.push('/pricing');
-                        }}
-                        className="w-full bg-[#D4AF37] hover:bg-[#b5952f] text-black font-semibold text-xs py-5 flex items-center justify-center gap-2"
-                    >
-                        <Sparkles className="w-4 h-4" />
-                        Upgrade to Minister (₦15,000 / mo)
-                        <ArrowRight className="w-4 h-4" />
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        onClick={() => onOpenChange(false)}
-                        className="w-full text-xs text-gray-400 hover:text-white"
-                    >
-                        Wait until midnight
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
+export function DailyLimitModal({
+  open,
+  onOpenChange,
+  used = 5,
+  total = 5,
+  onSeePlans,
+  onOpenSanctuary,
+}: DailyLimitModalProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md p-0 border-0 bg-transparent shadow-2xl">
+        <div className="p-1">
+          <DailyLimitCard
+            used={used}
+            total={total}
+            onSeePlans={() => {
+              onOpenChange(false);
+              if (onSeePlans) onSeePlans();
+            }}
+            onOpenSanctuary={() => {
+              onOpenChange(false);
+              if (onOpenSanctuary) onOpenSanctuary();
+            }}
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }

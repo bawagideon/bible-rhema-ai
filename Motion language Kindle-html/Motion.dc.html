@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bible Rhema AI — Motion language</title>
+<script src="./vendor/react.js"></script>
+<script src="./vendor/react-dom.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0A0A0B}
+a{color:inherit;text-decoration:none}
+button,input,textarea,select{font-family:inherit}
+:focus-visible{outline:2px solid #F3E5AB;outline-offset:2px}
+.root{background:#0A0A0B;color:#F8F9FA;font-family:'Inter',system-ui,sans-serif}
+.serif{font-family:'Playfair Display',Georgia,serif}
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.16em;color:#D4AF37;text-transform:uppercase}
+.muted{color:#A1A1AA}.dim{color:#8F8F98}
+.card{background:#121214;border:1px solid rgba(243,229,171,.10);border-radius:20px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 20px;border-radius:12px;font-weight:600;font-size:14px;cursor:pointer;border:1px solid transparent;background:transparent;color:#F8F9FA}
+.btn-p{background:#D4AF37;color:#0A0A0B;font-weight:700}
+.btn-s{border-color:rgba(243,229,171,.28);color:#F3E5AB}
+.btn-q{border-color:rgba(243,229,171,.12);color:#B4B4BC}
+.pill{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:0 14px;border-radius:999px;border:1px solid rgba(243,229,171,.14);font-size:13px;font-weight:600;color:#B4B4BC;background:transparent;cursor:pointer}
+.pill.on{border-color:rgba(212,175,55,.5);background:rgba(212,175,55,.14);color:#F3E5AB}
+.tag{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:rgba(212,175,55,.12);font-size:12px;font-weight:600;color:#F3E5AB}
+.tag.q{background:rgba(243,229,171,.06);color:#B4B4BC}
+.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.nav{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:12px;color:#B4B4BC;font-weight:500;font-size:15px}
+.nav:hover,.sub:hover{background:rgba(243,229,171,.06);color:#F8F9FA}
+.nav.on{background:rgba(212,175,55,.12);color:#F3E5AB;font-weight:600}
+.sub{display:block;padding:7px 14px 7px 46px;border-radius:10px;color:#8F8F98;font-size:14px}
+.sub.on{color:#F3E5AB;background:rgba(212,175,55,.10)}
+.row:hover{background:rgba(243,229,171,.04)}
+.field{width:100%;padding:13px 16px;border-radius:12px;border:1px solid rgba(243,229,171,.14);background:#0A0A0B;font-size:15px;line-height:1.5}
+.lbl{font-size:13px;font-weight:600;color:#D4D4D8}
+.skel{background:linear-gradient(90deg,#17171A 0%,#212126 50%,#17171A 100%);border-radius:10px}
+
+@property --n{syntax:'<integer>';initial-value:0;inherits:false}
+.stage{height:170px;border-radius:14px;background:#0A0A0B;border:1px solid rgba(243,229,171,.08);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.fl{transform-origin:50% 92%;filter:drop-shadow(0 0 14px rgba(212,175,55,.55));animation:ign 5s infinite}
+@keyframes ign{0%{transform:scale(0);opacity:0}10%{transform:scale(1.18);opacity:1}16%{transform:scale(1)}30%{transform:scale(1.04,1.1) rotate(1.5deg)}45%{transform:scale(.98,1.02) rotate(-1.5deg)}60%{transform:scale(1.05,1.08) rotate(1deg)}78%{transform:scale(1) rotate(0)}94%{opacity:1}100%{transform:scale(.9);opacity:0}}
+.orb{width:64px;height:64px;border-radius:50%;background:radial-gradient(circle at 50% 38%,#F3E5AB,#D4AF37 55%,rgba(212,175,55,.25));animation:br 19s ease-in-out infinite}
+@keyframes br{0%{transform:scale(1);box-shadow:0 0 24px rgba(212,175,55,.25)}21%{transform:scale(1.55);box-shadow:0 0 64px rgba(212,175,55,.55)}58%{transform:scale(1.55);box-shadow:0 0 64px rgba(212,175,55,.55)}100%{transform:scale(1);box-shadow:0 0 24px rgba(212,175,55,.25)}}
+.hring{position:absolute;width:112px;height:112px;border-radius:50%;border:1.5px solid #F3E5AB;opacity:0;animation:ho 19s infinite}
+@keyframes ho{0%,21%{opacity:0;transform:scale(.96)}30%{opacity:.7;transform:scale(1.02)}44%{opacity:.25;transform:scale(1)}56%{opacity:.7;transform:scale(1.03)}59%,100%{opacity:0}}
+.lbl3{position:absolute;bottom:10px;font-size:12px;letter-spacing:.14em;font-weight:600;color:#F3E5AB;opacity:0}
+.l1{animation:l1 19s infinite}.l2{animation:l2 19s infinite}.l3{animation:l3 19s infinite}
+@keyframes l1{0%,19%{opacity:1}21%,100%{opacity:0}}@keyframes l2{0%,21%{opacity:0}23%,56%{opacity:1}58%,100%{opacity:0}}@keyframes l3{0%,58%{opacity:0}60%,98%{opacity:1}100%{opacity:0}}
+.w{display:inline-block;opacity:0;animation:wi 6s infinite;animation-delay:calc(var(--i)*.18s)}
+@keyframes wi{0%{opacity:0;transform:translateY(8px);filter:blur(4px)}7%{opacity:1;transform:none;filter:none}86%{opacity:1}100%{opacity:0}}
+.ul{display:block;height:2px;background:#D4AF37;margin-top:8px;transform-origin:left;animation:us 6s infinite}
+@keyframes us{0%,22%{transform:scaleX(0)}34%,86%{transform:scaleX(1)}100%{transform:scaleX(1);opacity:0}}
+.amen{width:58px;height:58px;border-radius:50%;background:#D4AF37;color:#0A0A0B;display:flex;align-items:center;justify-content:center;position:relative;animation:pr 3s infinite}
+@keyframes pr{0%,8%{transform:scale(1)}12%{transform:scale(.9)}22%,100%{transform:scale(1)}}
+.rg{position:absolute;inset:0;border-radius:50%;border:2px solid #D4AF37;opacity:0;animation:rp 3s infinite}.rg.b{animation-delay:.3s}
+@keyframes rp{0%,10%{transform:scale(.9);opacity:0}14%{opacity:.7}70%{transform:scale(2.6);opacity:0}100%{opacity:0}}
+.sm{stroke:#D4AF37;fill:none;stroke-width:2;stroke-linecap:round;stroke-dasharray:200;stroke-dashoffset:200;opacity:0;animation:sm 5s infinite}.sm.b{animation-delay:1.4s;transform:translateX(34px) scaleX(-1)}
+@keyframes sm{0%{stroke-dashoffset:200;opacity:0;transform:translateY(10px)}25%{opacity:.9}70%{stroke-dashoffset:0;opacity:.55}100%{stroke-dashoffset:0;opacity:0;transform:translateY(-16px)}}
+.bk{width:34px;height:14px;border-radius:3px;background:#1C1C20;animation:bk 8s infinite;animation-delay:calc(var(--i)*.28s)}
+@keyframes bk{0%{background:#1C1C20;box-shadow:none}5%{background:#F3E5AB;box-shadow:0 0 12px rgba(212,175,55,.7)}12%{background:#B8912B;box-shadow:none}88%{background:#B8912B}100%{background:#1C1C20}}
+.er{height:8px;border-radius:4px;background:#1C1C20;width:210px;position:relative}
+.erf{height:8px;border-radius:4px;background:#D4AF37;position:relative;animation:er 5s infinite}
+.erf::after{content:"";position:absolute;right:-6px;top:-4px;width:16px;height:16px;border-radius:50%;background:#F3E5AB;box-shadow:0 0 14px 4px rgba(212,175,55,.7)}
+@keyframes er{0%{width:0;opacity:1}65%{width:62%}90%{width:62%;opacity:1}100%{width:62%;opacity:0}}
+.gild{position:relative;width:200px;height:104px;border-radius:18px;background:#121214;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:15px;color:#F3E5AB}
+.gild::before{content:"";position:absolute;inset:0;padding:1.5px;border-radius:18px;background:linear-gradient(110deg,rgba(212,175,55,.25) 30%,#F3E5AB 50%,rgba(212,175,55,.25) 70%);background-size:250% 100%;-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:gl 5s linear infinite}
+@keyframes gl{0%{background-position:150% 0}100%{background-position:-50% 0}}
+.sh{transform-box:view-box;transform-origin:16px 11px;animation:ul 5s infinite}
+@keyframes ul{0%,18%{transform:translateY(0) rotate(0)}34%{transform:translateY(-3px) rotate(0)}52%,80%{transform:translateY(-3px) rotate(-30deg)}94%,100%{transform:translateY(0) rotate(0)}}
+.lk{animation:lg 5s infinite}@keyframes lg{0%,40%{filter:none}55%,80%{filter:drop-shadow(0 0 8px rgba(212,175,55,.8))}100%{filter:none}}
+.mt{width:26px;height:100px;border-radius:6px;background:#1C1C20;position:relative;overflow:hidden}
+.mt i{position:absolute;inset:0;background:linear-gradient(0deg,#B8912B,#F3E5AB);transform-origin:bottom}
+.pad{animation:pd 6s ease-in-out infinite}.vo{animation:vo 6s infinite}
+@keyframes pd{0%,22%{transform:scaleY(.7)}30%,66%{transform:scaleY(.26)}78%,100%{transform:scaleY(.7)}}
+@keyframes vo{0%,22%{transform:scaleY(.05)}27%{transform:scaleY(.55)}33%{transform:scaleY(.82)}40%{transform:scaleY(.45)}48%{transform:scaleY(.85)}56%{transform:scaleY(.5)}64%{transform:scaleY(.78)}70%,100%{transform:scaleY(.05)}}
+.sl{height:8px;border-radius:4px;background:#1C1C20}
+.scan{position:absolute;left:0;right:0;height:2px;background:#F3E5AB;box-shadow:0 0 14px 3px rgba(243,229,171,.6);animation:sc 4s infinite}
+@keyframes sc{0%{top:0;opacity:0}6%{opacity:1}84%{top:100%;opacity:1}100%{top:100%;opacity:0}}
+.cp{padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#1C1C20;color:#8F8F98}
+.c1{animation:c1 4s infinite}.c2{animation:c2 4s infinite}.c3{animation:c3 4s infinite}
+@keyframes c1{0%,22%{background:#1C1C20;color:#8F8F98}28%,88%{background:rgba(212,175,55,.2);color:#F3E5AB}100%{background:#1C1C20;color:#8F8F98}}
+@keyframes c2{0%,46%{background:#1C1C20;color:#8F8F98}52%,88%{background:rgba(212,175,55,.2);color:#F3E5AB}100%{background:#1C1C20;color:#8F8F98}}
+@keyframes c3{0%,68%{background:#1C1C20;color:#8F8F98}74%,88%{background:rgba(212,175,55,.2);color:#F3E5AB}100%{background:#1C1C20;color:#8F8F98}}
+.cnt{font-family:'Playfair Display',Georgia,serif;font-size:54px;font-weight:600;color:#F3E5AB;counter-reset:n var(--n);animation:cu 4s ease-out infinite}
+.cnt::after{content:counter(n)}
+@keyframes cu{0%{--n:0}55%,100%{--n:128}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</helmet>
+<div class="root" style="min-height:1480px;padding:48px 56px 64px;display:flex;flex-direction:column;gap:34px">
+ <header style="display:flex;flex-direction:column;gap:10px"><span class="eyebrow">System</span><h1 class="serif" style="margin:0;font-size:42px;line-height:1.1;font-weight:600">Motion language: Kindle</h1>
+  <p class="muted" style="margin:0;font-size:16px;max-width:780px;line-height:1.6">Four ideas run through every animation: <strong style="color:#F3E5AB">Light</strong> (things kindle), <strong style="color:#F3E5AB">Breath</strong> (slow, even rhythm), <strong style="color:#F3E5AB">Ink</strong> (words arrive, not slide), <strong style="color:#F3E5AB">Weight</strong> (actions feel placed). These are live. Each loops so you can judge it.</p></header>
+ <div style="display:flex;flex-wrap:wrap;gap:30px 24px"><section style="flex:1 1 290px;max-width:330px;display:flex;flex-direction:column;gap:12px"><div class="stage" role="img" aria-label="Kindle animation demo"><svg class="fl" width="84" height="84" viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="fg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF4C7"></stop><stop offset=".5" stop-color="#E7C762"></stop><stop offset="1" stop-color="#B8912B"></stop></linearGradient></defs><path d="M12 2c1.2 3.4 5.8 5.4 5.8 11a5.8 5.8 0 0 1-11.6 0c0-2.4 1.1-3.8 2.4-4.8 0 2.2 1.1 3.5 2.4 3.5C10.2 8.4 10.6 5 12 2z" fill="url(#fg)"></path></svg></div><div style="display:flex;flex-direction:column;gap:6px"><span class="eyebrow">01 · Streak, Altar, Profile</span><h2 class="serif" style="margin:0;font-size:22px;font-weight:600">Kindle</h2><p class="muted" style="margin:0;font-size:14px;line-height:1.6">When today’s check-in lands, the flame ignites from nothing, overshoots, then settles into a slow flicker.</p></div></section><section style="flex:1 1 290px;max-width:330px;display:flex;flex-direction:column;gap:12px"><div class="stage" role="img" aria-label="Breath animation demo"><span class="hring"></span><span class="orb"></span><span class="lbl3 l1">BREATHE IN · 4</span><span class="lbl3 l2">HOLD · 7</span><span class="lbl3 l3">OUT · 8</span></div><div style="display:flex;flex-direction:column;gap:6px"><span class="eyebrow">02 · Sanctuary stillness</span><h2 class="serif" style="margin:0;font-size:22px;font-weight:600">Breath</h2><p class="muted" style="margin:0;font-size:14px;line-height:1.6">4 seconds in, 7 held with a shimmer ring, 8 out. Labels cross-fade. The orb is the timer.</p></div></section><section style="flex:1 1 290px;max-width:330px;display:flex;flex-direction:column;gap:12px"><div class="stage" role="img" aria-label="Verse unfurl animation demo"><div style="text-align:center;padding:0 22px"><p class="serif" style="margin:0;font-style:italic;font-size:21px;line-height:1.35;color:#F8F9FA"><span class="w" style="--i:0">Thy</span> <span class="w" style="--i:1">word</span> <span class="w" style="--i:2">is</span> <span class="w" style="--i:3">a</span> <span class="w" style="--i:4">lamp</span> <span class="w" style="--i:5">unto</span> <span class="w" style="--i:6">my</span> <span class="w" style="--i:7">feet</span> </p><span class="ul" style="width:100px;margin:10px auto 0"></span><span class="eyebrow" style="display:block;margin-top:8px;font-size:10px">PSALM 119:105 · KJV</span></div></div><div style="display:flex;flex-direction:column;gap:6px"><span class="eyebrow">03 · Daily Rhema</span><h2 class="serif" style="margin:0;font-size:22px;font-weight:600">Verse unfurl</h2><p class="muted" style="margin:0;font-size:14px;line-height:1.6">Words arrive one by one, 180 ms apart, rising and un-blurring. The reference underline draws last.</p></div></section><section style="flex:1 1 290px;max-width:330px;display:flex;flex-direction:column;gap:12px"><div class="stage" role="img" aria-label="Amen ripple animation demo"><div class="amen"><span class="rg"></span><span class="rg b"></span><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width:26px;height:26px;stroke-width:2.6"><path d="M5 12l5 5 9-11"></path></svg></div></div><div style="display:flex;flex-direction:column;gap:6px"><span class="eyebrow">04 · Check-ins</span><h2 class="serif" style="margin:0;font-size:22px;font-weight:600">Amen ripple</h2><p class="muted" style="margin:0;font-size:14px;line-height:1.6">A press-dip, then two gold rings spread and fade. A light haptic tick on Android.</p></div></section><section style="flex:1 1 290px;max-width:330px;display:flex;flex-direction:column;gap:12px"><div class="stage" role="img" aria-label="Incense rise animation demo"><svg width="130" height="150" viewBox="0 0 70 120" aria-hidden="true"><path class="sm" d="M30 118 C20 98 40 88 30 70 C20 52 40 44 30 22 C26 12 32 6 30 0"></path><path class="sm b" d="M30 118 C20 98 40 88 30 70 C20 52 40 44 30 22 C26 12 32 6 30 0"></path></svg></div><div style="display:flex;flex-direction:column;gap:6px"><span class="eyebrow">05 · I prayed today</span><h2 class="serif" style="margin:0;font-size:22px;font-weight:600">Incense rise</h2><p class="muted" style="margin:0;font-size:14px;line-height:1.6">A thin gold thread draws upward from the petition card and dissolves. Slow, silent and reverent.</p></div></section><section style="flex:1 1 290px;max-width:330px;display:flex;flex-direction:column;gap:12px"><div class="stage" role="img" aria-label="Nehemiah wall animation demo"><div style="display:flex;flex-direction:column;gap:4px"><div style="display:flex;gap:4px;"><span class="bk" style="--i:10"></span><span class="bk" style="--i:11"></span><span class="bk" style="--i:12"></span><span class="bk" style="--i:13"></span><span class="bk" style="--i:14"></span></div><div style="display:flex;gap:4px;margin-left:17px;"><span class="bk" style="--i:5"></span><span class="bk" style="--i:6"></span><span class="bk" style="--i:7"></span><span class="bk" style="--i:8"></span><span class="bk" style="--i:9"></span></div><div style="display:flex;gap:4px;"><span class="bk" style="--i:0"></span><span class="bk" style="--i:1"></span><span class="bk" style="--i:2"></span><span class="bk" style="--i:3"></span><span class="bk" style="--i:4"></span></div></div></div><div style="display:flex;flex-direction:column;gap:6px"><span class="eyebrow">06 · Focus timer</span><h2 class="serif" style="margin:0;font-size:22px;font-weight:600">Nehemiah wall</h2><p class="muted" style="margin:0;font-size:14px;line-height:1.6">A wall of 25 bricks, one laid per minute. Finishing lights the whole wall once. (15 shown.)</p></div></section><section style="flex:1 1 290px;max-width:330px;display:flex;flex-direction:column;gap:12px"><div class="stage" role="img" aria-label="Ember run animation demo"><div class="er"><div class="erf"></div></div></div><div style="display:flex;flex-direction:column;gap:6px"><span class="eyebrow">07 · Onboarding, outline, plans</span><h2 class="serif" style="margin:0;font-size:22px;font-weight:600">Ember run</h2><p class="muted" style="margin:0;font-size:14px;line-height:1.6">An ember travels the leading edge of any progress bar and leaves the bar full and calm.</p></div></section><section style="flex:1 1 290px;max-width:330px;display:flex;flex-direction:column;gap:12px"><div class="stage" role="img" aria-label="Gilded edge animation demo"><div class="gild">Minister</div></div><div style="display:flex;flex-direction:column;gap:6px"><span class="eyebrow">08 · Minister plan card</span><h2 class="serif" style="margin:0;font-size:22px;font-weight:600">Gilded edge</h2><p class="muted" style="margin:0;font-size:14px;line-height:1.6">A slow gold glint circles the border every five seconds. Never faster. Off under data saver.</p></div></section><section style="flex:1 1 290px;max-width:330px;display:flex;flex-direction:column;gap:12px"><div class="stage" role="img" aria-label="Unlatch animation demo"><svg class="lk" width="86" height="86" viewBox="0 0 24 24" fill="none" stroke="#F3E5AB" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" fill="rgba(212,175,55,.18)"></rect><path class="sh" d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg></div><div style="display:flex;flex-direction:column;gap:6px"><span class="eyebrow">09 · Upgrade success</span><h2 class="serif" style="margin:0;font-size:22px;font-weight:600">Unlatch</h2><p class="muted" style="margin:0;font-size:14px;line-height:1.6">The shackle lifts and swings open as the plan activates, with a single warm glow.</p></div></section><section style="flex:1 1 290px;max-width:330px;display:flex;flex-direction:column;gap:12px"><div class="stage" role="img" aria-label="Duck animation demo"><div style="display:flex;gap:26px;align-items:flex-end"><div style="display:flex;flex-direction:column;align-items:center;gap:8px"><div class="mt"><i class="pad"></i></div><span class="dim" style="font-size:11px">PAD</span></div><div style="display:flex;flex-direction:column;align-items:center;gap:8px"><div class="mt"><i class="vo"></i></div><span class="dim" style="font-size:11px">VOICE</span></div></div></div><div style="display:flex;flex-direction:column;gap:6px"><span class="eyebrow">10 · Sanctuary mixer</span><h2 class="serif" style="margin:0;font-size:22px;font-weight:600">Duck</h2><p class="muted" style="margin:0;font-size:14px;line-height:1.6">The pad level visibly dips while the voice speaks, then swells back. You can see the mix breathing.</p></div></section><section style="flex:1 1 290px;max-width:330px;display:flex;flex-direction:column;gap:12px"><div class="stage" role="img" aria-label="Scan animation demo"><div style="position:relative;width:230px;padding:6px 0;display:flex;flex-direction:column;gap:12px"><div class="sl" style="width:92%"></div><div style="display:flex;gap:8px"><span class="cp c1">John 15:4</span><div class="sl" style="flex:1;align-self:center"></div></div><div class="sl" style="width:80%"></div><div style="display:flex;gap:8px"><span class="cp c2">John 15:7</span><div class="sl" style="flex:1;align-self:center"></div></div><div class="sl" style="width:66%"></div><div style="display:flex;gap:8px"><span class="cp c3">John 15:10</span><div class="sl" style="flex:1;align-self:center"></div></div><span class="scan"></span></div></div><div style="display:flex;flex-direction:column;gap:6px"><span class="eyebrow">11 · Faithfulness check</span><h2 class="serif" style="margin:0;font-size:22px;font-weight:600">Scan</h2><p class="muted" style="margin:0;font-size:14px;line-height:1.6">A line of light passes down the manuscript and each verified reference turns gold as it is crossed.</p></div></section><section style="flex:1 1 290px;max-width:330px;display:flex;flex-direction:column;gap:12px"><div class="stage" role="img" aria-label="Count-up animation demo"><div style="text-align:center"><div class="cnt" aria-label="128"></div><span class="dim" style="font-size:12px;letter-spacing:.12em">STUDIES SAVED</span></div></div><div style="display:flex;flex-direction:column;gap:6px"><span class="eyebrow">12 · Stats and profile</span><h2 class="serif" style="margin:0;font-size:22px;font-weight:600">Count-up</h2><p class="muted" style="margin:0;font-size:14px;line-height:1.6">Numbers climb to their value with an ease-out. Pure CSS, no script.</p></div></section></div>
+ <p class="dim" style="margin:0;font-size:13px;line-height:1.6;max-width:820px">Rules: animate transform and opacity only. Keep every effect under 400 ms except the deliberate slow ones (breath, incense, glint). Honour reduced motion with a static end state. In lite mode (low-end device or data saver) turn off particles, glints and glows.</p>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1480}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

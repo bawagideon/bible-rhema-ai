@@ -250,11 +250,11 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     {/* STREAK */}
                     <div className="p-4 rounded-xl bg-[#141416] border border-gray-800 space-y-1">
-                        <div className="flex items-center justify-between text-gray-500 text-xs">
+                        <div className="flex items-center justify-between text-gray-400 text-xs">
                             <span className="font-mono uppercase text-[10px] tracking-wider">Walk Streak</span>
                             <Flame className="w-4 h-4 text-[#D4AF37]" />
                         </div>
-                        <div className="text-2xl font-serif font-bold text-white">{stats.streak} Days</div>
+                        <div className="text-2xl font-serif font-bold text-[#F3E5AB]">{stats.streak} Days</div>
                         <div className="flex items-center gap-1 pt-1 text-[10px] text-[#D4AF37]">
                             {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, i) => (
                                 <span key={i} className={`w-4 h-4 rounded-full flex items-center justify-center font-mono ${i <= 4 ? 'bg-[#D4AF37] text-black font-bold' : 'bg-gray-800 text-gray-500'}`}>
@@ -266,32 +266,32 @@ export default function SettingsPage() {
 
                     {/* STUDIES */}
                     <div className="p-4 rounded-xl bg-[#141416] border border-gray-800 space-y-1">
-                        <div className="flex items-center justify-between text-gray-500 text-xs">
+                        <div className="flex items-center justify-between text-gray-400 text-xs">
                             <span className="font-mono uppercase text-[10px] tracking-wider">Exegetical Studies</span>
-                            <BookOpen className="w-4 h-4 text-blue-400" />
+                            <BookOpen className="w-4 h-4 text-[#F3E5AB]" />
                         </div>
-                        <div className="text-2xl font-serif font-bold text-white">{stats.studies}</div>
+                        <div className="text-2xl font-serif font-bold text-[#F3E5AB]">{stats.studies}</div>
                         <p className="text-[11px] text-gray-400">Stored in Library vault</p>
                     </div>
 
                     {/* JOURNAL */}
                     <div className="p-4 rounded-xl bg-[#141416] border border-gray-800 space-y-1">
-                        <div className="flex items-center justify-between text-gray-500 text-xs">
+                        <div className="flex items-center justify-between text-gray-400 text-xs">
                             <span className="font-mono uppercase text-[10px] tracking-wider">Journal Reflections</span>
-                            <Sparkles className="w-4 h-4 text-purple-400" />
+                            <Sparkles className="w-4 h-4 text-[#D4AF37]" />
                         </div>
-                        <div className="text-2xl font-serif font-bold text-white">{stats.journal} Notes</div>
+                        <div className="text-2xl font-serif font-bold text-[#F3E5AB]">{stats.journal} Notes</div>
                         <p className="text-[11px] text-gray-400">Daily walk insights</p>
                     </div>
 
                     {/* ANSWERED PRAYERS */}
                     <div className="p-4 rounded-xl bg-[#141416] border border-gray-800 space-y-1">
-                        <div className="flex items-center justify-between text-gray-500 text-xs">
+                        <div className="flex items-center justify-between text-gray-400 text-xs">
                             <span className="font-mono uppercase text-[10px] tracking-wider">Answered Testimonies</span>
-                            <HeartHandshake className="w-4 h-4 text-emerald-400" />
+                            <HeartHandshake className="w-4 h-4 text-[#D4AF37]" />
                         </div>
-                        <div className="text-2xl font-serif font-bold text-white">{stats.answered} Recorded</div>
-                        <p className="text-[11px] text-emerald-400 font-mono">Faithfulness record</p>
+                        <div className="text-2xl font-serif font-bold text-[#F3E5AB]">{stats.answered} Recorded</div>
+                        <p className="text-[11px] text-[#D4AF37] font-mono">Faithfulness record</p>
                     </div>
                 </div>
 

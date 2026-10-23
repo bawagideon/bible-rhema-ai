@@ -26,20 +26,18 @@ let cachedServerPurify: any = null;
 
 function loadServerJSDOM(): any {
     if (typeof window !== 'undefined') return null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((globalThis as any).JSDOM) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         return (globalThis as any).JSDOM;
     }
     try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (typeof (globalThis as any).__non_webpack_require__ !== 'undefined') {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const jsdomModule = (globalThis as any).__non_webpack_require__('jsdom');
-            return jsdomModule.JSDOM || jsdomModule;
-        }
-        if (typeof require !== 'undefined') {
-            const jsdomModule = require('jsdom');
+        const req =
+            typeof (globalThis as any).__non_webpack_require__ !== 'undefined'
+                ? (globalThis as any).__non_webpack_require__
+                : typeof eval !== 'undefined'
+                    ? eval('require')
+                    : null;
+        if (req) {
+            const jsdomModule = req('jsdom');
             return jsdomModule.JSDOM || jsdomModule;
         }
     } catch {

@@ -84,3 +84,512 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ==========================================================================
+   BIBLE RHEMA AI — MOTION LANGUAGE: KINDLE & SYSTEM TOKENS
+   Reference: Motion language Kindle-html & Loading, empty and error states-html
+   ========================================================================== */
+
+@property --n {
+  syntax: '<integer>';
+  initial-value: 0;
+  inherits: false;
+}
+
+/* System Typography and Tokens */
+.font-serif-rhema, .serif {
+  font-family: var(--font-playfair), Georgia, serif;
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: #D4AF37;
+  text-transform: uppercase;
+}
+
+.muted {
+  color: #A1A1AA;
+}
+
+.dim {
+  color: #8F8F98;
+}
+
+.card-rhema, .card-surface {
+  background: #121214;
+  border: 1px solid rgba(243, 229, 171, 0.10);
+  border-radius: 20px;
+}
+
+/* System Buttons */
+.btn-rhema {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #F8F9FA;
+  transition: all 0.2s ease;
+}
+
+.btn-p {
+  background: #D4AF37;
+  color: #0A0A0B;
+  font-weight: 700;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.btn-p:hover {
+  background: #E7C762;
+  transform: translateY(-1px);
+}
+
+.btn-s {
+  border-color: rgba(243, 229, 171, 0.28);
+  color: #F3E5AB;
+}
+.btn-s:hover {
+  background: rgba(243, 229, 171, 0.08);
+  border-color: rgba(243, 229, 171, 0.45);
+}
+
+.btn-q {
+  border-color: rgba(243, 229, 171, 0.12);
+  color: #B4B4BC;
+}
+.btn-q:hover {
+  background: rgba(243, 229, 171, 0.04);
+  color: #F8F9FA;
+}
+
+/* Pills & Tags */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(243, 229, 171, 0.14);
+  font-size: 13px;
+  font-weight: 600;
+  color: #B4B4BC;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.pill.on, .pill:hover {
+  border-color: rgba(212, 175, 55, 0.5);
+  background: rgba(212, 175, 55, 0.14);
+  color: #F3E5AB;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(212, 175, 55, 0.12);
+  font-size: 12px;
+  font-weight: 600;
+  color: #F3E5AB;
+}
+.tag.q {
+  background: rgba(243, 229, 171, 0.06);
+  color: #B4B4BC;
+}
+
+/* Skeleton Loading Shimmer */
+.skel {
+  background: linear-gradient(90deg, #17171A 0%, #212126 50%, #17171A 100%);
+  background-size: 200% 100%;
+  animation: skel-shimmer 2s ease-in-out infinite;
+  border-radius: 10px;
+}
+@keyframes skel-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Stage Container */
+.stage {
+  height: 170px;
+  border-radius: 14px;
+  background: #0A0A0B;
+  border: 1px solid rgba(243, 229, 171, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 01 · Kindle Flame Ignition */
+.fl {
+  transform-origin: 50% 92%;
+  filter: drop-shadow(0 0 14px rgba(212, 175, 55, 0.55));
+  animation: ign 5s infinite;
+}
+@keyframes ign {
+  0% { transform: scale(0); opacity: 0; }
+  10% { transform: scale(1.18); opacity: 1; }
+  16% { transform: scale(1); }
+  30% { transform: scale(1.04, 1.1) rotate(1.5deg); }
+  45% { transform: scale(0.98, 1.02) rotate(-1.5deg); }
+  60% { transform: scale(1.05, 1.08) rotate(1deg); }
+  78% { transform: scale(1) rotate(0); }
+  94% { opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0; }
+}
+
+/* 02 · Sanctuary Breath (4-7-8) */
+.orb {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 38%, #F3E5AB, #D4AF37 55%, rgba(212, 175, 55, 0.25));
+  animation: br 19s ease-in-out infinite;
+}
+@keyframes br {
+  0% { transform: scale(1); box-shadow: 0 0 24px rgba(212, 175, 55, 0.25); }
+  21% { transform: scale(1.55); box-shadow: 0 0 64px rgba(212, 175, 55, 0.55); }
+  58% { transform: scale(1.55); box-shadow: 0 0 64px rgba(212, 175, 55, 0.55); }
+  100% { transform: scale(1); box-shadow: 0 0 24px rgba(212, 175, 55, 0.25); }
+}
+
+.hring {
+  position: absolute;
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  border: 1.5px solid #F3E5AB;
+  opacity: 0;
+  animation: ho 19s infinite;
+}
+@keyframes ho {
+  0%, 21% { opacity: 0; transform: scale(0.96); }
+  30% { opacity: 0.7; transform: scale(1.02); }
+  44% { opacity: 0.25; transform: scale(1); }
+  56% { opacity: 0.7; transform: scale(1.03); }
+  59%, 100% { opacity: 0; }
+}
+
+.lbl3 {
+  position: absolute;
+  bottom: 10px;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  font-weight: 600;
+  color: #F3E5AB;
+  opacity: 0;
+}
+.l1 { animation: l1 19s infinite; }
+.l2 { animation: l2 19s infinite; }
+.l3 { animation: l3 19s infinite; }
+@keyframes l1 { 0%, 19% { opacity: 1; } 21%, 100% { opacity: 0; } }
+@keyframes l2 { 0%, 21% { opacity: 0; } 23%, 56% { opacity: 1; } 58%, 100% { opacity: 0; } }
+@keyframes l3 { 0%, 58% { opacity: 0; } 60%, 98% { opacity: 1; } 100% { opacity: 0; } }
+
+/* 03 · Verse Unfurl */
+.w {
+  display: inline-block;
+  opacity: 0;
+  animation: wi 6s infinite;
+  animation-delay: calc(var(--i) * 0.18s);
+}
+@keyframes wi {
+  0% { opacity: 0; transform: translateY(8px); filter: blur(4px); }
+  7% { opacity: 1; transform: none; filter: none; }
+  86% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.ul-rhema {
+  display: block;
+  height: 2px;
+  background: #D4AF37;
+  margin-top: 8px;
+  transform-origin: left;
+  animation: us 6s infinite;
+}
+@keyframes us {
+  0%, 22% { transform: scaleX(0); }
+  34%, 86% { transform: scaleX(1); }
+  100% { transform: scaleX(1); opacity: 0; }
+}
+
+/* 04 · Amen Ripple */
+.amen {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: #D4AF37;
+  color: #0A0A0B;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  animation: pr 3s infinite;
+}
+@keyframes pr {
+  0%, 8% { transform: scale(1); }
+  12% { transform: scale(0.9); }
+  22%, 100% { transform: scale(1); }
+}
+
+.rg {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid #D4AF37;
+  opacity: 0;
+  animation: rp 3s infinite;
+}
+.rg.b { animation-delay: 0.3s; }
+@keyframes rp {
+  0%, 10% { transform: scale(0.9); opacity: 0; }
+  14% { opacity: 0.7; }
+  70% { transform: scale(2.6); opacity: 0; }
+  100% { opacity: 0; }
+}
+
+/* 05 · Incense Rise */
+.sm {
+  stroke: #D4AF37;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 200;
+  stroke-dashoffset: 200;
+  opacity: 0;
+  animation: sm 5s infinite;
+}
+.sm.b {
+  animation-delay: 1.4s;
+  transform: translateX(34px) scaleX(-1);
+}
+@keyframes sm {
+  0% { stroke-dashoffset: 200; opacity: 0; transform: translateY(10px); }
+  25% { opacity: 0.9; }
+  70% { stroke-dashoffset: 0; opacity: 0.55; }
+  100% { stroke-dashoffset: 0; opacity: 0; transform: translateY(-16px); }
+}
+
+/* 06 · Nehemiah Wall Focus Bricks */
+.bk {
+  width: 34px;
+  height: 14px;
+  border-radius: 3px;
+  background: #1C1C20;
+  animation: bk 8s infinite;
+  animation-delay: calc(var(--i) * 0.28s);
+}
+@keyframes bk {
+  0% { background: #1C1C20; box-shadow: none; }
+  5% { background: #F3E5AB; box-shadow: 0 0 12px rgba(212, 175, 55, 0.7); }
+  12% { background: #B8912B; box-shadow: none; }
+  88% { background: #B8912B; }
+  100% { background: #1C1C20; }
+}
+
+/* 07 · Ember Run Progress Bar */
+.er {
+  height: 8px;
+  border-radius: 4px;
+  background: #1C1C20;
+  width: 100%;
+  position: relative;
+}
+.erf {
+  height: 8px;
+  border-radius: 4px;
+  background: #D4AF37;
+  position: relative;
+  animation: er 5s infinite;
+}
+.erf::after {
+  content: "";
+  position: absolute;
+  right: -6px;
+  top: -4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #F3E5AB;
+  box-shadow: 0 0 14px 4px rgba(212, 175, 55, 0.7);
+}
+@keyframes er {
+  0% { width: 0; opacity: 1; }
+  65% { width: 62%; }
+  90% { width: 62%; opacity: 1; }
+  100% { width: 62%; opacity: 0; }
+}
+
+/* 08 · Gilded Edge */
+.gild {
+  position: relative;
+  border-radius: 18px;
+  background: #121214;
+  color: #F3E5AB;
+}
+.gild::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1.5px;
+  border-radius: 18px;
+  background: linear-gradient(110deg, rgba(212, 175, 55, 0.25) 30%, #F3E5AB 50%, rgba(212, 175, 55, 0.25) 70%);
+  background-size: 250% 100%;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: gl 5s linear infinite;
+  pointer-events: none;
+}
+@keyframes gl {
+  0% { background-position: 150% 0; }
+  100% { background-position: -50% 0; }
+}
+
+/* 09 · Unlatch */
+.sh {
+  transform-box: view-box;
+  transform-origin: 16px 11px;
+  animation: ul 5s infinite;
+}
+@keyframes ul {
+  0%, 18% { transform: translateY(0) rotate(0); }
+  34% { transform: translateY(-3px) rotate(0); }
+  52%, 80% { transform: translateY(-3px) rotate(-30deg); }
+  94%, 100% { transform: translateY(0) rotate(0); }
+}
+.lk {
+  animation: lg 5s infinite;
+}
+@keyframes lg {
+  0%, 40% { filter: none; }
+  55%, 80% { filter: drop-shadow(0 0 8px rgba(212, 175, 55, 0.8)); }
+  100% { filter: none; }
+}
+
+/* 10 · Sanctuary Mixer Ducking */
+.mt {
+  width: 26px;
+  height: 100px;
+  border-radius: 6px;
+  background: #1C1C20;
+  position: relative;
+  overflow: hidden;
+}
+.mt i {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, #B8912B, #F3E5AB);
+  transform-origin: bottom;
+}
+.pad { animation: pd 6s ease-in-out infinite; }
+.vo { animation: vo 6s infinite; }
+@keyframes pd {
+  0%, 22% { transform: scaleY(0.7); }
+  30%, 66% { transform: scaleY(0.26); }
+  78%, 100% { transform: scaleY(0.7); }
+}
+@keyframes vo {
+  0%, 22% { transform: scaleY(0.05); }
+  27% { transform: scaleY(0.55); }
+  33% { transform: scaleY(0.82); }
+  40% { transform: scaleY(0.45); }
+  48% { transform: scaleY(0.85); }
+  56% { transform: scaleY(0.5); }
+  64% { transform: scaleY(0.78); }
+  70%, 100% { transform: scaleY(0.05); }
+}
+
+/* 11 · Studio Manuscript Faithfulness Scan */
+.sl {
+  height: 8px;
+  border-radius: 4px;
+  background: #1C1C20;
+}
+.scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #F3E5AB;
+  box-shadow: 0 0 14px 3px rgba(243, 229, 171, 0.6);
+  animation: sc 4s infinite;
+}
+@keyframes sc {
+  0% { top: 0; opacity: 0; }
+  6% { opacity: 1; }
+  84% { top: 100%; opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+
+.cp {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #1C1C20;
+  color: #8F8F98;
+}
+.c1 { animation: c1 4s infinite; }
+.c2 { animation: c2 4s infinite; }
+.c3 { animation: c3 4s infinite; }
+@keyframes c1 {
+  0%, 22% { background: #1C1C20; color: #8F8F98; }
+  28%, 88% { background: rgba(212, 175, 55, 0.2); color: #F3E5AB; }
+  100% { background: #1C1C20; color: #8F8F98; }
+}
+@keyframes c2 {
+  0%, 46% { background: #1C1C20; color: #8F8F98; }
+  52%, 88% { background: rgba(212, 175, 55, 0.2); color: #F3E5AB; }
+  100% { background: #1C1C20; color: #8F8F98; }
+}
+@keyframes c3 {
+  0%, 68% { background: #1C1C20; color: #8F8F98; }
+  74%, 88% { background: rgba(212, 175, 55, 0.2); color: #F3E5AB; }
+  100% { background: #1C1C20; color: #8F8F98; }
+}
+
+/* 12 · Numerical Count-Up */
+.cnt {
+  font-family: var(--font-playfair), Georgia, serif;
+  font-size: 54px;
+  font-weight: 600;
+  color: #F3E5AB;
+  counter-reset: n var(--n);
+  animation: cu 4s ease-out infinite;
+}
+.cnt::after {
+  content: counter(n);
+}
+@keyframes cu {
+  0% { --n: 0; }
+  55%, 100% { --n: 128; }
+}
+
+/* Reduced Motion & Low-Data Lite Mode */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+body.low-data *,
+body.low-data *::before,
+body.low-data *::after {
+  animation: none !important;
+}

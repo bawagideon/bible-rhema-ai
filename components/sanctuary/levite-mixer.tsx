@@ -510,21 +510,39 @@ export function LeviteMixer() {
                             </Button>
                         </div>
 
-                        {/* Auto-Ducking Toggle */}
-                        <div className="p-3 rounded-xl bg-[#1a1a22] border border-gray-800 flex items-center justify-between gap-3">
-                            <div className="space-y-0.5">
-                                <label className="text-xs font-semibold text-white block cursor-pointer">
-                                    Automatic Ducking
-                                </label>
-                                <span className="text-[10px] text-muted-foreground block">
-                                    Ducks procedural pad to 35% when voice speaks
-                                </span>
+                        {/* Auto-Ducking Toggle & Kindle Duck Motion Meter */}
+                        <div className="p-3 rounded-xl bg-[#1a1a22] border border-gray-800 flex flex-col gap-3">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="space-y-0.5">
+                                    <label className="text-xs font-semibold text-white block cursor-pointer">
+                                        Automatic Ducking
+                                    </label>
+                                    <span className="text-[10px] text-muted-foreground block">
+                                        Ducks procedural pad to 35% when voice speaks
+                                    </span>
+                                </div>
+                                <Switch
+                                    checked={isDucking}
+                                    onCheckedChange={handleDuckingToggle}
+                                    disabled={!speechSupported}
+                                />
                             </div>
-                            <Switch
-                                checked={isDucking}
-                                onCheckedChange={handleDuckingToggle}
-                                disabled={!speechSupported}
-                            />
+
+                            {/* Kindle Duck Motion Meter Stage */}
+                            <div className="stage !h-[110px] rounded-xl p-2.5 flex items-center justify-center gap-8 border-[rgba(243,229,171,0.12)] bg-[#0A0A0B]">
+                                <div className="flex flex-col items-center gap-1.5">
+                                    <div className="mt">
+                                        <i className={cn("pad", !isPadPlaying && "!animate-none !scale-y-[0.1]")} />
+                                    </div>
+                                    <span className="dim text-[10px] tracking-widest font-mono">PAD</span>
+                                </div>
+                                <div className="flex flex-col items-center gap-1.5">
+                                    <div className="mt">
+                                        <i className={cn("vo", !isVoicePlaying && "!animate-none !scale-y-[0.05]")} />
+                                    </div>
+                                    <span className="dim text-[10px] tracking-widest font-mono">VOICE</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
 

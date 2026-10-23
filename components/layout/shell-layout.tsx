@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { BrandLogo } from "@/components/brand/brand-logo";
+import { GoInPeace } from "@/components/system/go-in-peace";
 import {
     Library,
     MessageCircle,
@@ -55,6 +56,7 @@ export function ShellLayout({ children }: ShellLayoutProps) {
     const { getToken } = useAuth();
     const { user } = useUser();
     const { signOut } = useClerk();
+    const [isSigningOut, setIsSigningOut] = useState(false);
 
     // "Self-Healing" Profile Sync for Localhost
     useEffect(() => {
@@ -205,7 +207,7 @@ export function ShellLayout({ children }: ShellLayoutProps) {
                                 <Palette className="mr-2 h-4 w-4 text-[#D4AF37]" />
                                 <span>Plans & Upgrades</span>
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => signOut()} className="text-xs py-2 cursor-pointer text-red-400 focus:text-red-400 focus:bg-red-500/10">
+                            <DropdownMenuItem onClick={() => setIsSigningOut(true)} className="text-xs py-2 cursor-pointer text-red-400 focus:text-red-400 focus:bg-red-500/10">
                                 <LogOut className="mr-2 h-4 w-4" />
                                 <span>Sign Out</span>
                             </DropdownMenuItem>
@@ -277,7 +279,7 @@ export function ShellLayout({ children }: ShellLayoutProps) {
                                     <span>Plans & Upgrades</span>
                                 </Link>
                                 <button
-                                    onClick={() => signOut()}
+                                    onClick={() => setIsSigningOut(true)}
                                     className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-red-400 hover:bg-red-500/10 transition-colors text-left"
                                 >
                                     <LogOut className="h-4 w-4" />
@@ -331,6 +333,15 @@ export function ShellLayout({ children }: ShellLayoutProps) {
 
             {/* RIGHT PANEL (Divine Context) */}
             <RightPanel />
+
+            {/* Go In Peace 1.2s Exit Sequence */}
+            {isSigningOut && (
+                <GoInPeace
+                    onComplete={() => {
+                        signOut(() => router.push('/sign-in'));
+                    }}
+                />
+            )}
         </div>
     );
 }

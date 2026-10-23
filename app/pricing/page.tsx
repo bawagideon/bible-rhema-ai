@@ -247,8 +247,8 @@ export default function PricingPage() {
                         </div>
                     </div>
 
-                    {/* Minister (Gold) */}
-                    <div className="bg-[#1c1c1c] border-2 border-[#D4AF37] rounded-2xl p-8 flex flex-col justify-between space-y-6 relative shadow-2xl shadow-[#D4AF37]/10 transform md:-translate-y-2">
+                    {/* Minister (Gold) with Kindle Gilded Edge */}
+                    <div className="gild-container bg-[#1c1c1c] border-2 border-[#D4AF37] rounded-2xl p-8 flex flex-col justify-between space-y-6 relative shadow-2xl shadow-[#D4AF37]/10 transform md:-translate-y-2">
                         <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#D4AF37] text-black text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-lg">
                             <Sparkles className="w-3 h-3" /> Most Recommended for Pastors
                         </div>
@@ -311,7 +311,7 @@ export default function PricingPage() {
                 </p>
             </div>
 
-            {/* SCREEN 10 CHECKOUT STATE MODAL 1: VERIFYING */}
+            {/* SCREEN 10 CHECKOUT STATE MODAL 1: VERIFYING with Kindle Ember Run */}
             <Dialog open={checkoutState === 'verifying'} onOpenChange={() => {}}>
                 <DialogContent className="bg-[#141416] border-gray-800 text-white sm:max-w-md text-center p-8">
                     <div className="flex flex-col items-center justify-center space-y-4">
@@ -324,19 +324,29 @@ export default function PricingPage() {
                         <DialogDescription className="text-sm text-gray-400">
                             Connecting to Paystack and kingdom servers to confirm your transaction. Please do not close or refresh this tab.
                         </DialogDescription>
-                        <div className="text-xs text-[#D4AF37] font-mono pt-2">
+                        {/* Kindle Ember Run Progress */}
+                        <div className="py-2 flex justify-center">
+                            <div className="er">
+                                <div className="erf" />
+                            </div>
+                        </div>
+                        <div className="text-xs text-[#D4AF37] font-mono pt-1">
                             Checking cryptographic signatures & idempotent ledger...
                         </div>
                     </div>
                 </DialogContent>
             </Dialog>
 
-            {/* SCREEN 10 CHECKOUT STATE MODAL 2: SUCCESS / WELCOME TO MINISTER */}
+            {/* SCREEN 10 CHECKOUT STATE MODAL 2: SUCCESS / WELCOME TO MINISTER with Kindle Unlatch */}
             <Dialog open={checkoutState === 'success'} onOpenChange={(open) => { if (!open) setCheckoutState('idle'); }}>
                 <DialogContent className="bg-[#141416] border-[#D4AF37]/50 text-white sm:max-w-md text-center p-8 shadow-2xl shadow-[#D4AF37]/15">
                     <div className="flex flex-col items-center justify-center space-y-4">
-                        <div className="p-4 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                            <CheckCircle2 className="w-10 h-10" />
+                        {/* Kindle Unlatch Animation */}
+                        <div className="stage !h-[100px] !w-[100px] rounded-full border border-[#D4AF37]/30 bg-[#0A0A0B] flex items-center justify-center">
+                            <svg className="lk" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#F3E5AB" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <rect x="5" y="11" width="14" height="9" rx="2" fill="rgba(212,175,55,.18)" />
+                                <path className="sh" d="M8 11V8a4 4 0 0 1 8 0v3" />
+                            </svg>
                         </div>
                         <DialogTitle className="font-serif text-2xl text-white">
                             Welcome to Minister

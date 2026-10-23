@@ -227,6 +227,36 @@ export function FaithfulnessCheckModal({
                 </DialogHeader>
 
                 <div className="space-y-4 py-3 max-h-[50vh] overflow-y-auto">
+                    {/* Kindle Scan Animation when verifying */}
+                    {isVerifying && (
+                        <div className="stage !h-[170px] rounded-xl flex items-center justify-center border border-[rgba(243,229,171,0.15)] bg-[#0A0A0B] p-4 my-2">
+                            <div className="relative w-[260px] py-1 flex flex-col gap-3">
+                                <div className="sl w-[92%]" />
+                                <div className="flex gap-2">
+                                    <span className="cp c1">
+                                        {results[0]?.ref || "John 15:4"}
+                                    </span>
+                                    <div className="sl flex-1 self-center" />
+                                </div>
+                                <div className="sl w-[80%]" />
+                                <div className="flex gap-2">
+                                    <span className="cp c2">
+                                        {results[1]?.ref || "John 15:7"}
+                                    </span>
+                                    <div className="sl flex-1 self-center" />
+                                </div>
+                                <div className="sl w-[66%]" />
+                                <div className="flex gap-2">
+                                    <span className="cp c3">
+                                        {results[2]?.ref || "John 15:10"}
+                                    </span>
+                                    <div className="sl flex-1 self-center" />
+                                </div>
+                                <span className="scan" />
+                            </div>
+                        </div>
+                    )}
+
                     {totalCount === 0 && hasChecked && !isVerifying && (
                         <div className="p-6 text-center border border-dashed border-gray-800 rounded-xl space-y-2">
                             <BookOpen className="w-8 h-8 text-gray-500 mx-auto" />

@@ -132,14 +132,20 @@ export function SpiritualCalibrationForm() {
 
     return (
         <div className="w-full max-w-lg mx-auto font-sans">
-            {/* Step Progress Indicators */}
-            <div className="mb-8 flex justify-center space-x-2">
-                {[1, 2, 3, 4].map(i => (
+            {/* Step Progress with Kindle Ember Run */}
+            <div className="mb-8 flex flex-col items-center gap-2.5">
+                <div className="er !w-full !max-w-md">
                     <div
-                        key={i}
-                        className={`h-1.5 flex-1 rounded-full transition-colors ${i <= step ? 'bg-[#D4AF37]' : 'bg-gray-800'}`}
+                        className="erf"
+                        style={{ width: `${(step / 4) * 100}%`, animation: 'none' }}
                     />
-                ))}
+                </div>
+                <div className="flex justify-between w-full !max-w-md text-[11px] text-[#8F8F98] font-mono px-1">
+                    <span className={step >= 1 ? "text-[#F3E5AB] font-semibold" : ""}>1. Focus</span>
+                    <span className={step >= 2 ? "text-[#F3E5AB] font-semibold" : ""}>2. Grace</span>
+                    <span className={step >= 3 ? "text-[#F3E5AB] font-semibold" : ""}>3. Scripture</span>
+                    <span className={step >= 4 ? "text-[#F3E5AB] font-semibold" : ""}>4. Study</span>
+                </div>
             </div>
 
             <AnimatePresence mode="wait">

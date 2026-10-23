@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { ConfirmDeleteDialog, EmptyFirstVisit } from "@/components/system";
 
 interface PrayerItem {
     id: string;
@@ -48,6 +49,12 @@ export default function AltarPage() {
     const [isCommunity, setIsCommunity] = useState(false);
     const [communityConsent, setCommunityConsent] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [recentlyPrayedIds, setRecentlyPrayedIds] = useState<string[]>([]);
+    const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; prayerId: string; title: string }>({
+        open: false,
+        prayerId: "",
+        title: "",
+    });
 
     // Fetch user stats & prayers
     const fetchAllData = async () => {
@@ -181,6 +188,11 @@ export default function AltarPage() {
             const data = await res.json();
             if (data.success) {
                 toast.success(data.message || "Amen! Joined in prayer.");
+                // Kindle Incense Rise effect trigger
+                setRecentlyPrayedIds(prev => [...prev, prayerId]);
+                setTimeout(() => {
+                    setRecentlyPrayedIds(prev => prev.filter(id => id !== prayerId));
+                }, 5000);
                 // Update local community count
                 setCommunityPrayers(prev => prev.map(p =>
                     p.id === prayerId
@@ -490,22 +502,34 @@ export default function AltarPage() {
                                     )}
                                 </div>
 
-                                {/* Active Petitions List */}
+                                {/* Active Petitions List with Kindle Empty First Visit */}
                                 {activePrayers.length === 0 ? (
-                                    <div className="text-center py-16 p-8 border border-gray-800/80 rounded-2xl bg-[#121214] space-y-3">
-                                        <Flame className="w-10 h-10 text-gray-500 mx-auto" />
-                                        <h3 className="font-serif text-lg font-semibold text-white">Your Altar is Quiet</h3>
-                                        <p className="text-xs text-gray-400 max-w-md mx-auto">
-                                            No active petitions are currently placed. Write what you are believing God for above.
-                                        </p>
-                                    </div>
+                                    <EmptyFirstVisit
+                                        title="Your altar is waiting"
+                                        description="Save a petition, write a prayer or intercede for a brother, and it will appear here."
+                                        actionText="Start your first petition"
+                                        onAction={() => {
+                                            const input = document.getElementById("quick-altar-input");
+                                            if (input) input.focus();
+                                        }}
+                                    />
                                 ) : (
                                     <div className="space-y-4">
                                         {activePrayers.map((prayer) => (
                                             <div
                                                 key={prayer.id}
-                                                className="p-5 rounded-2xl border border-gray-800/80 bg-[#141416] hover:border-gray-700 transition-all space-y-4 shadow-lg shadow-black/20"
+                                                className="relative p-5 rounded-2xl border border-gray-800/80 bg-[#141416] hover:border-gray-700 transition-all space-y-4 shadow-lg shadow-black/20 overflow-hidden"
                                             >
+                                                {/* Kindle Incense Rise */}
+                                                {recentlyPrayedIds.includes(prayer.id) && (
+                                                    <div className="absolute right-4 top-2 pointer-events-none z-20">
+                                                        <svg width="50" height="70" viewBox="0 0 70 120" aria-hidden="true">
+                                                            <path className="sm" d="M30 118 C20 98 40 88 30 70 C20 52 40 44 30 22 C26 12 32 6 30 0" />
+                                                            <path className="sm b" d="M30 118 C20 98 40 88 30 70 C20 52 40 44 30 22 C26 12 32 6 30 0" />
+                                                        </svg>
+                                                    </div>
+                                                )}
+
                                                 <div className="space-y-2">
                                                     <div className="flex items-center justify-between">
                                                         <Badge variant="outline" className="border-amber-500/30 text-[#D4AF37] bg-[#D4AF37]/10 text-[10px] font-semibold uppercase">
@@ -555,7 +579,7 @@ export default function AltarPage() {
                                                     </div>
 
                                                     <button
-                                                        onClick={() => handleDeletePrayer(prayer.id)}
+                                                        onClick={() => setDeleteDialog({ open: true, prayerId: prayer.id, title: prayer.title })}
                                                         className="text-gray-500 hover:text-rose-400 text-xs p-1.5 transition-colors"
                                                         title="Remove petition"
                                                     >
@@ -836,6 +860,16 @@ export default function AltarPage() {
                     </TabsContent>
                 </Tabs>
             </div>
+
+            {/* Confirm Before Deleting Dialog */}
+            <ConfirmDeleteDialog
+                open={deleteDialog.open}
+                onOpenChange={(open) => setDeleteDialog(prev => ({ ...prev, open }))}
+                title="Delete this prayer?"
+                itemName={deleteDialog.title}
+                itemType="prayer"
+                onConfirm={() => handleDeletePrayer(deleteDialog.prayerId)}
+            />
         </ShellLayout>
     );
 }
